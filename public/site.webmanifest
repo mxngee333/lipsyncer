@@ -1,0 +1,17 @@
+{
+  "name": "LipSyncer AI — Multi-Model Lip-Sync & Music Video Studio",
+  "short_name": "LipSyncer",
+  "description": "OpenArt-class multi-model Video+Audio and Image+Audio AI Lip-Sync & 20-Scene Storyboard Director",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0d",
+  "theme_color": "#8b5cf6",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
