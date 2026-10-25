@@ -37,6 +37,7 @@ import {
 import { generateLipSyncWithModel, generateStudioPortraitImage } from '../services/lipSyncEngineService';
 import { extractAudioSliceWav, generateDemoVocalWavBlob, getAudioDurationSec } from '../services/audioDspService';
 import { LIPSYNC_MODELS } from '../data/modelCatalog';
+import { buildVideoFileName } from '../services/clipNaming';
 
 export const StoryboardDirectorView: React.FC = () => {
   const [project, setProject] = useState<StoryboardDirectorProject | null>(() => loadStoryboardProject());
@@ -359,7 +360,14 @@ export const StoryboardDirectorView: React.FC = () => {
 
       recorder.onstop = () => {
         const fullMp4 = new Blob(chunks, { type: 'video/mp4' });
-        downloadFileBlob(fullMp4, `${project.songTitle.replace(/[^a-z0-9]+/gi, '_')}_Official_Full_Music_Video.mp4`);
+        downloadFileBlob(
+          fullMp4,
+          buildVideoFileName({
+            audioName: (audioFile as File | null)?.name || project.songTitle,
+            modelName: 'LipSyncer_Canvas_Director_60fps',
+            id: `${Date.now()}`
+          }).replace(/\.mp4$/, '_Official_Full_Music_Video.mp4')
+        );
         setIsExportingFullVideo(false);
         setExportProgressPct(100);
       };

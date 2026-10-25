@@ -3,6 +3,7 @@ import { Download, Trash2, ArrowUpRight, Film, Sparkles, Clock } from 'lucide-re
 import { GeneratedLipSyncClip } from '../types';
 import { LIPSYNC_MODELS } from '../data/modelCatalog';
 import { ModelBrandIcon } from './ModelBrandIcon';
+import { buildVideoFileName, downloadVideoWithName } from '../services/clipNaming';
 
 interface Props {
   clips: GeneratedLipSyncClip[];
@@ -96,7 +97,11 @@ export const CreationsVaultView: React.FC<Props> = ({
                   <div className="flex items-center gap-1.5">
                     <a
                       href={clip.videoUrl}
-                      download={`lipsyncer-${clip.modelId}-${clip.id}.mp4`}
+                      download={buildVideoFileName(clip)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        void downloadVideoWithName(clip.videoUrl, buildVideoFileName(clip));
+                      }}
                       className="px-2.5 py-1.5 rounded-lg bg-white text-black text-xs font-semibold hover:bg-zinc-200 transition flex items-center gap-1"
                     >
                       <Download className="w-3.5 h-3.5" />

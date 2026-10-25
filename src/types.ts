@@ -116,6 +116,8 @@ export interface GeneratedLipSyncClip {
   thumbnailUrl?: string;
   prompt: string;
   exactLyrics?: string;
+  /** Audio file name / phrase that drove the lip-sync (used in download filenames). */
+  audioName?: string;
   durationSec: number;
   aspectRatio: AspectRatioOption;
   resolution: string;

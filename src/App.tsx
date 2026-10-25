@@ -82,6 +82,7 @@ import { StoryboardDirectorView } from './components/StoryboardDirectorView';
 import { ModelArenaView } from './components/ModelArenaView';
 import { CreationsVaultView } from './components/CreationsVaultView';
 import { LegalPagesModal, LegalDocKey } from './components/LegalPagesModal';
+import { buildVideoFileName, downloadVideoWithName } from './services/clipNaming';
 
 type MainNavTab = 'studio' | 'director' | 'arena' | 'models' | 'vault';
 
@@ -287,6 +288,7 @@ export const App: React.FC = () => {
   const handleAudioChange = useCallback(
     (audioBlob: Blob | File, meta: AudioSelectionMeta) => {
       setAudioSource(audioBlob);
+      if (meta.fileName) setAudioFileName(meta.fileName);
       setSliceStartSec(meta.sliceStartSec);
       setSliceEndSec(meta.sliceEndSec);
       setAudioDurationSec(meta.durationSec);
@@ -343,7 +345,7 @@ export const App: React.FC = () => {
         effectiveAudio = 'DEMO_SYNTHETIC_VOCAL_PHRASE';
       }
 
-      const clip = await generateLipSyncWithModel(
+      const generatedClip = await generateLipSyncWithModel(
         {
           modelId: selectedModel.id,
           inputMode,
@@ -363,6 +365,10 @@ export const App: React.FC = () => {
           setProgress(p);
         }
       );
+      const clip: GeneratedLipSyncClip = {
+        ...generatedClip,
+        audioName: audioSource ? audioFileName : 'demo_vocal_phrase'
+      };
 
       // Save to media vault
       await saveGenerationRecord(clip);
@@ -410,7 +416,7 @@ export const App: React.FC = () => {
     });
 
     try {
-      const clip = await generateLipSyncWithModel(
+      const dspClip = await generateLipSyncWithModel(
         {
           modelId: 'lipsyncer_viseme_dsp',
           inputMode,
@@ -428,6 +434,10 @@ export const App: React.FC = () => {
         },
         (p) => setProgress(p)
       );
+      const clip: GeneratedLipSyncClip = {
+        ...dspClip,
+        audioName: audioSource ? audioFileName : 'demo_vocal_phrase'
+      };
 
       await saveGenerationRecord(clip);
       setActiveGeneratedClip(clip);
@@ -1261,7 +1271,14 @@ export const App: React.FC = () => {
                     {activeGeneratedClip && (
                       <a
                         href={activeGeneratedClip.videoUrl}
-                        download={`lipsyncer_${activeGeneratedClip.id}.mp4`}
+                        download={buildVideoFileName(activeGeneratedClip)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          void downloadVideoWithName(
+                            activeGeneratedClip.videoUrl,
+                            buildVideoFileName(activeGeneratedClip)
+                          );
+                        }}
                         className="px-2.5 py-1 rounded-lg bg-violet-600/20 hover:bg-violet-600/30 text-violet-300 text-xs font-semibold flex items-center gap-1 border border-violet-500/30 transition-colors"
                       >
                         <Download className="w-3.5 h-3.5" />
