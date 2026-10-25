@@ -5,7 +5,7 @@
  * - `fal-ai/latentsync` (Neural Video-to-Video & Image-to-Video Lip-Sync)
  * - `fal-ai/kling-video/v1/standard/image-to-video` (Kling 1.5 Omni)
  * - `fal-ai/minimax-video/image-to-video` (Hailuo / MiniMax Audio-to-Video)
- * - `fal-ai/wan-2.1/image-to-video` (Wan 2.1 Video Generator)
+ * - `fal-ai/wan-i2v` (Wan 2.1 Image-to-Video Generator)
  * - `fal-ai/flux/schnell` (Sub-second photorealistic studio portraits)
  *
  * Includes automatic queue polling, direct base64/URL ingestion, account balance
@@ -272,7 +272,7 @@ export async function generateLipSyncWithFalLatentSync(params: {
 }
 
 /**
- * Executes high-speed video generation via Fal.ai Wan 2.1 (`fal-ai/wan-2.1/image-to-video`).
+ * Executes high-speed video generation via Fal.ai Wan 2.1 (`fal-ai/wan-i2v`).
  */
 export async function generateVideoWithFalWan(params: {
   imageBlobOrUrl: Blob | string;
@@ -285,12 +285,16 @@ export async function generateVideoWithFalWan(params: {
       ? params.imageBlobOrUrl
       : await blobToDataUri(params.imageBlobOrUrl as Blob);
 
+  // NOTE: `fal-ai/wan-2.1/image-to-video` does not exist on Fal (404 "Application not found").
+  // The canonical Wan 2.1 image-to-video app id is `fal-ai/wan-i2v`.
+  const allowedAspect = ['16:9', '9:16', '1:1'];
   const result = await runFalQueueJob({
-    endpointId: 'fal-ai/wan-2.1/image-to-video',
+    endpointId: 'fal-ai/wan-i2v',
     input: {
       image_url: imageUrl,
       prompt: params.prompt,
-      aspect_ratio: params.aspectRatio || '16:9'
+      aspect_ratio: allowedAspect.includes(params.aspectRatio || '') ? params.aspectRatio : 'auto',
+      resolution: '720p'
     },
     onProgress: params.onProgress
   });
