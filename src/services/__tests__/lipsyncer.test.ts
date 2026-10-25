@@ -11,10 +11,15 @@ import {
   resetAllCooldowns
 } from '../tokenPoolService';
 import { sha256Hex } from '../r2VaultService';
+import {
+  getFalApiKey,
+  isFalKeyConfigured,
+  checkFalAccountStatus
+} from '../falAiService';
 
 describe('LipSyncer AI Multi-Model Catalog Tests', () => {
-  it('should verify catalog has 11 specialized AI lip-sync models', () => {
-    expect(LIPSYNC_MODELS.length).toBe(11);
+  it('should verify catalog has 13 specialized AI lip-sync models including Fal.ai cloud engines', () => {
+    expect(LIPSYNC_MODELS.length).toBe(13);
   });
 
   it('should verify all models have valid providers and features', () => {
@@ -115,5 +120,20 @@ describe('R2 Vault Web Crypto Tests', () => {
     const hash = await sha256Hex('LipSyncer-OpenArt-2026');
     expect(typeof hash).toBe('string');
     expect(hash.length).toBe(64);
+  });
+});
+
+describe('Fal.ai High-Speed Cloud Service Tests', () => {
+  it('should detect configured Fal.ai API key with correct format', () => {
+    expect(isFalKeyConfigured()).toBe(true);
+    const key = getFalApiKey();
+    expect(key.startsWith('fal_sk_')).toBe(true);
+  });
+
+  it('should verify Fal.ai account connectivity', async () => {
+    const status = await checkFalAccountStatus();
+    expect(status.authenticated).toBe(true);
+    expect(status.nickname).toBe('mxngee333');
+    expect(status.email).toBe('worldpraiseradio@gmail.com');
   });
 });

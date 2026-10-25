@@ -238,6 +238,56 @@ export const LIPSYNC_MODELS: LipSyncModelSpec[] = [
     hfSpaceId: 'multimodalart/ltx2-audio-to-video'
   },
   {
+    id: 'latentsync-fal',
+    name: 'ByteDance LatentSync (Fal.ai Cloud)',
+    provider: 'ByteDance',
+    badges: [
+      { label: 'Fal.ai Cloud', variant: 'new' },
+      { label: 'Ultra-Fast', variant: 'video_sync' }
+    ],
+    description: 'High-speed cloud-accelerated neural mouth, teeth & jaw re-synchronization via Fal.ai',
+    features: ['Video Lip-Sync', 'Image Lip-Sync', 'Audio', '4K'],
+    resolutionLabel: '1080p',
+    durationLabel: '2-15s',
+    minDurationSec: 2,
+    maxDurationSec: 15,
+    defaultDurationSec: 6,
+    supportsVideoInput: true,
+    supportsImageInput: true,
+    supportsEndFrame: false,
+    supportsReference: true,
+    creditCost: 10,
+    arenaElo: 1330,
+    arenaRank: 1,
+    accentColor: '#ec4899',
+    backendEngine: 'fal_latentsync'
+  },
+  {
+    id: 'wan-2-1-fal',
+    name: 'Wan 2.1 Video (Fal.ai Cloud)',
+    provider: 'Alibaba Wan',
+    badges: [
+      { label: 'Fal.ai Cloud', variant: 'new' },
+      { label: 'Cinematic', variant: 'arena_top' }
+    ],
+    description: 'Ultra-photorealistic cinematic video generation via Fal.ai Wan 2.1 cluster',
+    features: ['Image Lip-Sync', 'Audio', 'Reference', '4K'],
+    resolutionLabel: '1080p',
+    durationLabel: '5-10s',
+    minDurationSec: 4,
+    maxDurationSec: 10,
+    defaultDurationSec: 5,
+    supportsVideoInput: false,
+    supportsImageInput: true,
+    supportsEndFrame: false,
+    supportsReference: true,
+    creditCost: 14,
+    arenaElo: 1320,
+    arenaRank: 2,
+    accentColor: '#f97316',
+    backendEngine: 'fal_wan_video'
+  },
+  {
     id: 'lipsyncer-dsp-60fps',
     name: 'LipSyncer 60fps DSP Instant',
     provider: 'LipSyncer DSP',

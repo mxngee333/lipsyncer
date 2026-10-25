@@ -60,7 +60,9 @@ export interface LipSyncModelSpec {
     | 'wan_faster_mux'
     | 'wan_dualframe_mux'
     | 'codeformer_ltx_4k'
-    | 'dsp_viseme_60fps';
+    | 'dsp_viseme_60fps'
+    | 'fal_latentsync'
+    | 'fal_wan_video';
   hfSpaceId?: string;
 }
 

@@ -22,6 +22,13 @@ import {
 import { saveGenerationRecord } from './mediaVaultDb';
 import { getSessionUser, uploadVideoToR2Vault } from './r2VaultService';
 import {
+  generateLipSyncWithFalLatentSync,
+  generateVideoWithFalWan,
+  generatePortraitWithFalFlux,
+  isFalKeyConfigured,
+  FalBalanceExhaustedError
+} from './falAiService';
+import {
   getHfTokenPool,
   getTokenPoolStatus,
   isZeroGpuQuotaError,
@@ -701,6 +708,115 @@ async function executeSingleTokenBackendAttempt(params: {
       return { videoBlob, resolvedSeed, previewImageBlob: restoredImgBlob };
     }
 
+    case 'fal_latentsync': {
+      try {
+        let vidBlob: Blob;
+        let previewImageBlob: Blob | null = null;
+
+        if ((req.inputMode === 'image_audio' || !req.videoSource) && req.imageSource) {
+          onProgress?.({
+            status: 'preparing',
+            message: 'Synthesizing 30fps living portrait pre-pass for Fal.ai LatentSync...',
+            progressPercent: 18,
+            activeAccountLabel: 'Fal.ai Cloud'
+          });
+          previewImageBlob = await dataUrlOrSourceToBlob(req.imageSource);
+          vidBlob = await synthesizeLivingPortraitPrepassVideo(
+            previewImageBlob,
+            clampedDur,
+            req.aspectRatio
+          );
+        } else {
+          vidBlob = await dataUrlOrSourceToBlob(req.videoSource!);
+        }
+
+        const videoBlob = await generateLipSyncWithFalLatentSync({
+          videoBlobOrUrl: vidBlob,
+          audioBlobOrUrl: audioBlob,
+          onProgress: (msg, percent) => {
+            onProgress?.({
+              status: 'processing',
+              message: msg,
+              progressPercent: percent,
+              activeAccountLabel: 'Fal.ai Cluster'
+            });
+          }
+        });
+
+        return { videoBlob, resolvedSeed: seed, previewImageBlob };
+      } catch (falErr: any) {
+        if (
+          falErr instanceof FalBalanceExhaustedError ||
+          falErr?.message?.includes('locked') ||
+          falErr?.message?.includes('balance')
+        ) {
+          onProgress?.({
+            status: 'preparing',
+            message:
+              'Fal.ai balance exhausted (top up at fal.ai/billing). Seamlessly auto-routing to ZeroGPU LatentSync...',
+            progressPercent: 25,
+            activeAccountLabel: 'ZeroGPU Auto-Failover'
+          });
+          const fallbackModel =
+            LIPSYNC_MODELS.find((m) => m.id === 'latentsync-1-5') ?? LIPSYNC_MODELS[0];
+          return executeSingleTokenBackendAttempt({
+            ...params,
+            modelSpec: fallbackModel
+          });
+        }
+        throw falErr;
+      }
+    }
+
+    case 'fal_wan_video': {
+      try {
+        const imgBlob = await resolveInputImageBlob(req);
+        const rawVideo = await generateVideoWithFalWan({
+          imageBlobOrUrl: imgBlob,
+          prompt,
+          aspectRatio: req.aspectRatio,
+          onProgress: (msg, percent) => {
+            onProgress?.({
+              status: 'processing',
+              message: msg,
+              progressPercent: percent,
+              activeAccountLabel: 'Fal.ai Wan 2.1'
+            });
+          }
+        });
+
+        onProgress?.({
+          status: 'muxing',
+          message: 'Muxing high-fidelity vocal audio into Fal Wan video stream...',
+          progressPercent: 92,
+          activeAccountLabel: 'Local Muxer'
+        });
+        const videoBlob = await muxSilentVideoWithAudio(rawVideo, audioBlob, clampedDur, req.aspectRatio);
+        return { videoBlob, resolvedSeed: seed, previewImageBlob: imgBlob };
+      } catch (falErr: any) {
+        if (
+          falErr instanceof FalBalanceExhaustedError ||
+          falErr?.message?.includes('locked') ||
+          falErr?.message?.includes('balance')
+        ) {
+          onProgress?.({
+            status: 'preparing',
+            message:
+              'Fal.ai balance exhausted. Auto-routing to Wan 2.7 ZeroGPU cluster...',
+            progressPercent: 25,
+            activeAccountLabel: 'ZeroGPU Auto-Failover'
+          });
+          const fallbackModel =
+            LIPSYNC_MODELS.find((m) => m.id === 'wan-2-7') ?? LIPSYNC_MODELS[0];
+          return executeSingleTokenBackendAttempt({
+            ...params,
+            modelSpec: fallbackModel
+          });
+        }
+        throw falErr;
+      }
+    }
+
     case 'dsp_viseme_60fps':
     default: {
       const { videoBlob } = await renderInstantDspVisemeVideo({
@@ -988,7 +1104,20 @@ export async function generateStudioPortraitImage(
 
   const cleanPrompt = `${prompt.trim() || 'Photorealistic cinema portrait of a lead vocalist in studio stage spotlight'}. Ultra-clean 85mm lens portrait, crisp eyes and lips, ${ZERO_TEXT_DIRECTIVE}`;
 
-  // 1. Primary: SiliconFlow FLUX.1-schnell
+  // 1. Primary: Fal.ai FLUX Schnell (if configured & active)
+  if (isFalKeyConfigured()) {
+    try {
+      const falUrl = await generatePortraitWithFalFlux({
+        prompt: cleanPrompt,
+        aspectRatio
+      });
+      if (falUrl) return falUrl;
+    } catch {
+      // Fallback silently to SiliconFlow / GLM if Fal balance exhausted
+    }
+  }
+
+  // 2. Secondary: SiliconFlow FLUX.1-schnell
   if (siliconFlowKey) {
     const sfSize =
       aspectRatio === '9:16'
