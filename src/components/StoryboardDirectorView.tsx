@@ -213,9 +213,11 @@ export const StoryboardDirectorView: React.FC = () => {
 
       scene.generatedVideoUrl = clip.videoUrl;
       scene.done = true;
+      setStatusMessage(`Scene ${sceneNumber} lip-sync completed successfully!`);
     } catch (e: unknown) {
       const err = e as Error;
-      alert(`Lip-sync notice for Scene ${sceneNumber}: ${err?.message || 'Error executing lip-sync'}`);
+      console.warn(`[StoryboardDirector] Scene ${sceneNumber} error:`, err);
+      setStatusMessage(`Scene ${sceneNumber} note: ${err?.message || 'Error executing lip-sync'}`);
     } finally {
       scene.isGeneratingVideo = false;
       saveStoryboardProject(project);

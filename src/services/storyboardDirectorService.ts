@@ -441,7 +441,10 @@ button:hover{border-color:var(--accent)}main{max-width:1300px;margin:24px auto;p
 <script>
 function copyAll(){
   navigator.clipboard.writeText(document.getElementById('raw').innerText);
-  alert('Copied full canonical board to clipboard!');
+  const btn = event.target;
+  const prev = btn.innerText;
+  btn.innerText = 'Copied to Clipboard!';
+  setTimeout(() => { btn.innerText = prev; }, 1800);
 }
 </script>
 </body>

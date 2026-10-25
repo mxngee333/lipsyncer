@@ -77,6 +77,7 @@ import { OpenArtModelSelectorModal } from './components/OpenArtModelSelectorModa
 import { AuthModal } from './components/AuthModal';
 import { HfTokenPoolModal } from './components/HfTokenPoolModal';
 import { QuotaInterceptorModal } from './components/QuotaInterceptorModal';
+import { GenerationNoticeModal, NoticeModalState } from './components/GenerationNoticeModal';
 import { WaveformTrimmer, AudioSelectionMeta } from './components/WaveformTrimmer';
 import { StoryboardDirectorView } from './components/StoryboardDirectorView';
 import { ModelArenaView } from './components/ModelArenaView';
@@ -137,6 +138,7 @@ export const App: React.FC = () => {
   const [isQuotaModalOpen, setIsQuotaModalOpen] = useState(false);
   const [quotaErrorMessage, setQuotaErrorMessage] = useState<string | null>(null);
   const [activeLegalDoc, setActiveLegalDoc] = useState<LegalDocKey | null>(null);
+  const [noticeModal, setNoticeModal] = useState<NoticeModalState | null>(null);
 
   // User State
   const [currentUser, setCurrentUser] = useState<LipSyncerUser | null>(() => getSessionUser());
@@ -311,7 +313,17 @@ export const App: React.FC = () => {
       setImagePreviewUrl(dataUrl);
       setIsPortraitGenOpen(false);
     } catch (err: any) {
-      alert(`AI Portrait Generation note: ${err?.message || 'Using fallback studio portrait'}`);
+      setNoticeModal({
+        isOpen: true,
+        type: 'general_error',
+        title: 'Studio Portrait Generation Note',
+        message: err?.message || 'Using fallback high-definition studio portrait.',
+        primaryActionLabel: 'Use Pop Singer Preset',
+        onPrimaryAction: () => {
+          setImageSource(DEMO_FACE_PRESETS[0].imageUrl);
+          setImagePreviewUrl(DEMO_FACE_PRESETS[0].imageUrl);
+        }
+      });
     } finally {
       setIsGeneratingPortrait(false);
     }
@@ -323,11 +335,32 @@ export const App: React.FC = () => {
 
     // Check media
     if (inputMode === 'image_audio' && !imageSource) {
-      alert('Please upload or select a face portrait image first.');
+      setNoticeModal({
+        isOpen: true,
+        type: 'missing_input',
+        title: 'Portrait Image Required',
+        message: 'Please upload or select a face portrait image to generate talking or singing lip-sync.',
+        primaryActionLabel: 'Load Demo Pop Singer',
+        onPrimaryAction: () => {
+          setImageSource(DEMO_FACE_PRESETS[0].imageUrl);
+          setImagePreviewUrl(DEMO_FACE_PRESETS[0].imageUrl);
+        }
+      });
       return;
     }
     if (inputMode === 'video_audio' && !videoSource) {
-      alert('Please upload or select an input video first.');
+      setNoticeModal({
+        isOpen: true,
+        type: 'missing_input',
+        title: 'Video Input Required',
+        message: 'Please upload an existing MP4/WebM video of a speaking or singing subject to re-synchronize mouth and jaw articulation.',
+        primaryActionLabel: 'Switch to Portrait Mode',
+        onPrimaryAction: () => {
+          setInputMode('image_audio');
+          setImageSource(DEMO_FACE_PRESETS[0].imageUrl);
+          setImagePreviewUrl(DEMO_FACE_PRESETS[0].imageUrl);
+        }
+      });
       return;
     }
 
@@ -387,8 +420,29 @@ export const App: React.FC = () => {
       if (isZeroGpuQuotaError(errMsg)) {
         setQuotaErrorMessage(errMsg);
         setIsQuotaModalOpen(true);
+      } else if (errMsg.toLowerCase().includes('content filter') || errMsg.toLowerCase().includes('flagged')) {
+        setNoticeModal({
+          isOpen: true,
+          type: 'content_filter',
+          title: 'Upstream Model Safety Filter Intercepted Prompt',
+          message: errMsg,
+          primaryActionLabel: 'Switch to Wan 2.7 & Retry',
+          onPrimaryAction: () => {
+            const wanModel = LIPSYNC_MODELS.find((m) => m.id === 'wan-2-7');
+            if (wanModel) setSelectedModel(wanModel);
+          },
+          secondaryActionLabel: 'Run 60fps Instant DSP',
+          onSecondaryAction: () => handleRunInstantDsp()
+        });
       } else {
-        alert(`Generation encountered an error: ${errMsg}`);
+        setNoticeModal({
+          isOpen: true,
+          type: 'general_error',
+          title: 'Generation Notice',
+          message: errMsg,
+          primaryActionLabel: 'Run Instant 60fps DSP (0 Quota)',
+          onPrimaryAction: () => handleRunInstantDsp()
+        });
       }
 
       setProgress({
@@ -405,7 +459,7 @@ export const App: React.FC = () => {
   const handleRunInstantDsp = async () => {
     setIsQuotaModalOpen(false);
     const dspModel =
-      LIPSYNC_MODELS.find((m) => m.id === 'lipsyncer_viseme_dsp') ?? LIPSYNC_MODELS[0];
+      LIPSYNC_MODELS.find((m) => m.id === 'lipsyncer-dsp-60fps') ?? LIPSYNC_MODELS[0];
     setSelectedModel(dspModel);
 
     setIsGenerating(true);
@@ -418,7 +472,7 @@ export const App: React.FC = () => {
     try {
       const dspClip = await generateLipSyncWithModel(
         {
-          modelId: 'lipsyncer_viseme_dsp',
+          modelId: 'lipsyncer-dsp-60fps',
           inputMode,
           imageSource: inputMode === 'image_audio' ? imageSource : null,
           videoSource: inputMode === 'video_audio' ? videoSource : null,
@@ -448,7 +502,17 @@ export const App: React.FC = () => {
         progressPercent: 100
       });
     } catch (dspErr: any) {
-      alert(`DSP execution: ${dspErr?.message || 'Error executing DSP viseme sync'}`);
+      setNoticeModal({
+        isOpen: true,
+        type: 'general_error',
+        title: 'Instant DSP Engine Diagnostic',
+        message: dspErr?.message || 'Error executing DSP viseme sync.',
+        primaryActionLabel: 'Try Cloud Model (Wan 2.7)',
+        onPrimaryAction: () => {
+          const wanModel = LIPSYNC_MODELS.find((m) => m.id === 'wan-2-7');
+          if (wanModel) setSelectedModel(wanModel);
+        }
+      });
     } finally {
       setIsGenerating(false);
     }
@@ -1566,6 +1630,12 @@ export const App: React.FC = () => {
           onClose={() => setActiveLegalDoc(null)}
         />
       )}
+
+      {/* 6. High-Fidelity Generation Diagnostic & Safety Notice Modal */}
+      <GenerationNoticeModal
+        notice={noticeModal}
+        onClose={() => setNoticeModal(null)}
+      />
     </div>
   );
 };
