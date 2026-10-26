@@ -33,7 +33,9 @@ import {
   Flame,
   Music2,
   Clock,
-  Radio
+  Radio,
+  BrainCircuit,
+  Scissors
 } from 'lucide-react';
 
 import {
@@ -79,13 +81,14 @@ import { HfTokenPoolModal } from './components/HfTokenPoolModal';
 import { QuotaInterceptorModal } from './components/QuotaInterceptorModal';
 import { GenerationNoticeModal, NoticeModalState } from './components/GenerationNoticeModal';
 import { WaveformTrimmer, AudioSelectionMeta } from './components/WaveformTrimmer';
+import { FullSongVideoModeView } from './components/FullSongVideoModeView';
 import { StoryboardDirectorView } from './components/StoryboardDirectorView';
 import { ModelArenaView } from './components/ModelArenaView';
 import { CreationsVaultView } from './components/CreationsVaultView';
 import { LegalPagesModal, LegalDocKey } from './components/LegalPagesModal';
 import { buildVideoFileName, downloadVideoWithName } from './services/clipNaming';
 
-type MainNavTab = 'studio' | 'director' | 'arena' | 'models' | 'vault';
+type MainNavTab = 'studio' | 'full_song' | 'director' | 'arena' | 'models' | 'vault';
 
 // High quality cinematic demo portrait presets for zero-friction 1-click testing
 const DEMO_FACE_PRESETS = [
@@ -123,6 +126,7 @@ export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<MainNavTab>(() => {
     if (typeof window !== 'undefined') {
       const p = window.location.pathname;
+      if (p.includes('/full-song-video')) return 'full_song';
       if (p.includes('/storyboard-director')) return 'director';
       if (p.includes('/arena')) return 'arena';
       if (p.includes('/models')) return 'models';
@@ -232,6 +236,7 @@ export const App: React.FC = () => {
     if (typeof window !== 'undefined') {
       const routeMap: Record<MainNavTab, string> = {
         studio: '/',
+        full_song: '/full-song-video/',
         director: '/storyboard-director/',
         arena: '/arena/',
         models: '/models/',
@@ -618,6 +623,21 @@ export const App: React.FC = () => {
             </button>
 
             <button
+              onClick={() => handleTabChange('full_song')}
+              className={`px-3.5 py-1.5 text-xs font-medium rounded-xl transition-all flex items-center gap-1.5 ${
+                activeTab === 'full_song'
+                  ? 'bg-gradient-to-r from-violet-600 via-indigo-600 to-amber-500 text-white shadow-md shadow-violet-600/20'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
+              }`}
+            >
+              <BrainCircuit className="w-3.5 h-3.5 text-emerald-400" />
+              Full Song Video
+              <span className="px-1 py-0.2 text-[9px] font-bold rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                NEW
+              </span>
+            </button>
+
+            <button
               onClick={() => handleTabChange('director')}
               className={`px-3.5 py-1.5 text-xs font-medium rounded-xl transition-all flex items-center gap-1.5 ${
                 activeTab === 'director'
@@ -742,18 +762,26 @@ export const App: React.FC = () => {
         </div>
 
         {/* Mobile Navigation Sub-bar */}
-        <div className="flex md:hidden items-center justify-around mt-3 pt-2 border-t border-white/6 text-xs">
+        <div className="flex md:hidden items-center justify-around mt-3 pt-2 border-t border-white/6 text-xs overflow-x-auto">
           <button
             onClick={() => handleTabChange('studio')}
-            className={`py-1 px-2.5 rounded-lg font-medium flex items-center gap-1 ${
+            className={`py-1 px-2.5 rounded-lg font-medium flex items-center gap-1 shrink-0 ${
               activeTab === 'studio' ? 'text-violet-300 bg-violet-500/15' : 'text-zinc-400'
             }`}
           >
             <Film className="w-3.5 h-3.5" /> Studio
           </button>
           <button
+            onClick={() => handleTabChange('full_song')}
+            className={`py-1 px-2.5 rounded-lg font-medium flex items-center gap-1 shrink-0 ${
+              activeTab === 'full_song' ? 'text-emerald-300 bg-emerald-500/15' : 'text-zinc-400'
+            }`}
+          >
+            <BrainCircuit className="w-3.5 h-3.5 text-emerald-400" /> Full Song
+          </button>
+          <button
             onClick={() => handleTabChange('director')}
-            className={`py-1 px-2.5 rounded-lg font-medium flex items-center gap-1 ${
+            className={`py-1 px-2.5 rounded-lg font-medium flex items-center gap-1 shrink-0 ${
               activeTab === 'director' ? 'text-amber-300 bg-amber-500/15' : 'text-zinc-400'
             }`}
           >
@@ -817,29 +845,25 @@ export const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Banner 2: Seedance 2.5 & LatentSync */}
+              {/* Banner 2: Full Song Video Mode + Audiospliter DSP */}
               <div
-                onClick={() => {
-                  setSelectedModel(
-                    LIPSYNC_MODELS.find((m) => m.id === 'seedance_2_0_mini') ?? LIPSYNC_MODELS[0]
-                  );
-                }}
-                className="group relative cursor-pointer overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-900/40 via-[#121422] to-[#0c0c16] border border-indigo-500/20 hover:border-indigo-500/40 p-4 transition-all hover:scale-[1.01]"
+                onClick={() => handleTabChange('full_song')}
+                className="group relative cursor-pointer overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-900/40 via-[#121c1e] to-[#0c0c16] border border-emerald-500/25 hover:border-emerald-500/50 p-4 transition-all hover:scale-[1.01]"
               >
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
-                    <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                      Featured Model
+                    <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Full Song Video Mode
                     </span>
-                    <h3 className="text-sm font-bold text-white group-hover:text-indigo-200 transition-colors">
-                      Seedance 2.5 &amp; LatentSync 1.5
+                    <h3 className="text-sm font-bold text-white group-hover:text-emerald-200 transition-colors">
+                      🧠 Sync Lyrics + Storyboard Chunker
                     </h3>
                     <p className="text-xs text-zinc-400 line-clamp-2">
-                      Zero-text neural phoneme syncing with sub-280Hz vocal formant alignment and
-                      subtle emotional head gestures.
+                      Upload full song + storyboard images, auto-fill missing commensurate frames
+                      on-the-fly, and merge an exact 1080p MP4 master.
                     </p>
                   </div>
-                  <Sparkles className="w-4 h-4 text-indigo-400 group-hover:rotate-12 transition-transform shrink-0 mt-1" />
+                  <BrainCircuit className="w-4 h-4 text-emerald-400 group-hover:rotate-12 transition-transform shrink-0 mt-1" />
                 </div>
               </div>
 
@@ -944,8 +968,8 @@ export const App: React.FC = () => {
                     </span>
                   </div>
 
-                  {/* Dual Mode Tabs */}
-                  <div className="grid grid-cols-2 gap-2 p-1 bg-white/4 rounded-xl border border-white/6">
+                  {/* Triple Mode Tabs */}
+                  <div className="grid grid-cols-3 gap-2 p-1 bg-white/4 rounded-xl border border-white/6">
                     <button
                       onClick={() => handleInputModeChange('image_audio')}
                       className={`py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
@@ -967,6 +991,13 @@ export const App: React.FC = () => {
                     >
                       <Video className="w-4 h-4" />
                       Video + Audio
+                    </button>
+                    <button
+                      onClick={() => handleTabChange('full_song')}
+                      className="py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25"
+                    >
+                      <Scissors className="w-3.5 h-3.5 text-emerald-400" />
+                      Full Song Video
                     </button>
                   </div>
 
@@ -1502,7 +1533,17 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* TAB 2: 20-SCENE STORYBOARD & OMNI DIRECTOR */}
+        {/* TAB 2: FULL SONG VIDEO MODE (Audiospliter Chunking + Commensurate Frames + Vocal DSP Lyric Sync) */}
+        {activeTab === 'full_song' && (
+          <FullSongVideoModeView
+            onClipCreated={(clip) => {
+              setActiveGeneratedClip(clip);
+              setRecentClips((prev) => [clip, ...prev.filter((c) => c.id !== clip.id)]);
+            }}
+          />
+        )}
+
+        {/* TAB 3: 20-SCENE STORYBOARD & OMNI DIRECTOR */}
         {activeTab === 'director' && <StoryboardDirectorView />}
 
         {/* TAB 3: MODEL ARENA */}

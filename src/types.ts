@@ -1,11 +1,12 @@
 export type StudioTab =
   | 'lipsync_studio'
+  | 'full_song_video'
   | 'model_arena'
   | 'storyboard_director'
   | 'creations_vault'
   | 'models_hub';
 
-export type InputMediaMode = 'image_audio' | 'video_audio';
+export type InputMediaMode = 'image_audio' | 'video_audio' | 'full_song_video';
 
 export type AspectRatioOption = '16:9' | '9:16' | '1:1';
 
@@ -242,3 +243,64 @@ export interface StoryboardDirectorProject {
   scenes: StoryboardDirectorScene[];
   updatedAt: number;
 }
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * FULL SONG VIDEO MODE TYPES (Audio Chunking + Vocal DSP Lyric Sync +
+ * On-The-Fly Commensurate Scene Frame Synthesis + Exact Master Video Merge)
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+export type FullSongChunkMode =
+  | 'smart_vocal_dsp'
+  | 'fixed_interval'
+  | 'target_scene_count';
+
+export type FullSongSceneFrameSource =
+  | 'uploaded'
+  | 'commensurate_synthesized'
+  | 'ai_cloud_generated';
+
+export interface FullSongVideoChunk {
+  chunkIndex: number; // 1..N
+  chunkCode: string; // "01".."20"
+  startTimeSec: number;
+  endTimeSec: number;
+  durationSec: number;
+  timeWindowFormatted: string; // "00:00.0 - 00:08.5"
+  audioChunkBlob?: Blob;
+  audioChunkUrl?: string;
+  audioChunkFileName: string;
+  vocalEnergyScore: number; // 0.0 .. 1.0 (from Vocal Formant DSP)
+  syncMode: 'LIP-SYNC' | 'CINEMATIC-MOTION';
+  syncedLyrics: string;
+  lyricSyncConfidence: number; // 0.94 .. 0.99
+  imageSourceUrl: string;
+  frameSourceType: FullSongSceneFrameSource;
+  commensurateSceneLabel: string;
+  cameraMovement: CameraMotionPreset;
+  prompt: string;
+  selectedModelId: string;
+  generatedVideoUrl?: string;
+  generatedVideoBlob?: Blob;
+  status: 'ready' | 'synthesizing_frame' | 'rendering_lipsync' | 'completed' | 'error';
+  progressPercent?: number;
+  errorMessage?: string;
+}
+
+export interface FullSongLyricSyncResult {
+  alignedChunks: Array<{
+    chunkIndex: number;
+    startTimeSec: number;
+    endTimeSec: number;
+    syncedLyrics: string;
+    syncMode: 'LIP-SYNC' | 'CINEMATIC-MOTION';
+    vocalEnergyScore: number;
+    confidence: number;
+  }>;
+  detectedBpm: number;
+  feltGrooveBpm: number;
+  vocalIslandsCount: number;
+  lrcFormattedText: string;
+  overallSyncConfidence: number;
+}
+

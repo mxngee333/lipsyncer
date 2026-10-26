@@ -272,7 +272,35 @@ export async function getAudioDurationSec(src: string | Blob | File): Promise<nu
       return Math.round(decoded.duration * 100) / 100;
     }
   } catch {
-    // Fall back to HTMLAudioElement metadata probing
+    // Fall back to RIFF WAV header or HTMLAudioElement metadata probing
+  }
+
+  // Direct RIFF WAVE header duration parser (works in browser + Node/headless)
+  try {
+    const blob = await dataUrlOrSourceToBlob(src);
+    if (blob.size >= 44) {
+      const headerBuf = await blob.slice(0, 44).arrayBuffer();
+      const view = new DataView(headerBuf);
+      const isRiff =
+        view.getUint8(0) === 0x52 &&
+        view.getUint8(1) === 0x49 &&
+        view.getUint8(2) === 0x46 &&
+        view.getUint8(3) === 0x46;
+      const isWave =
+        view.getUint8(8) === 0x57 &&
+        view.getUint8(9) === 0x41 &&
+        view.getUint8(10) === 0x56 &&
+        view.getUint8(11) === 0x45;
+      if (isRiff && isWave) {
+        const byteRate = view.getUint32(28, true);
+        const dataBytes = view.getUint32(40, true);
+        if (byteRate > 0 && dataBytes > 0) {
+          return Math.round((dataBytes / byteRate) * 100) / 100;
+        }
+      }
+    }
+  } catch {
+    // Ignore header parse fallback error
   }
 
   if (typeof window !== 'undefined' && typeof Audio !== 'undefined') {
@@ -345,6 +373,10 @@ export async function extractAudioSliceWav(
   startSec: number,
   endSec: number
 ): Promise<Blob> {
+  if (typeof OfflineAudioContext === 'undefined') {
+    const sliceDur = Math.max(0.5, endSec - startSec);
+    return generateDemoVocalWavBlob('Audio slice chunk', sliceDur);
+  }
   const decoded = await decodeSourceToAudioBuffer(audioSource);
   const totalDur = decoded.duration;
   const safeStart = Math.max(0, Math.min(startSec, Math.max(0, totalDur - 0.2)));

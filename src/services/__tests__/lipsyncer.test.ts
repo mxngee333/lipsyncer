@@ -16,6 +16,13 @@ import {
   isFalKeyConfigured,
   checkFalAccountStatus
 } from '../falAiService';
+import {
+  computeSmartAudioChunkBoundaries,
+  syncLyricsWithAudioSignal,
+  synthesizeCommensurateSceneFrame,
+  buildFullSongVideoChunks
+} from '../fullSongVideoService';
+import { generateDemoVocalWavBlob } from '../audioDspService';
 
 describe('LipSyncer AI Multi-Model Catalog Tests', () => {
   it('should verify catalog has 19 specialized AI lip-sync models including OpenArt official fleet and Fal.ai cloud engines', () => {
@@ -135,5 +142,98 @@ describe('Fal.ai High-Speed Cloud Service Tests', () => {
     expect(status.authenticated).toBe(true);
     expect(status.nickname).toBe('mxngee333');
     expect(status.email).toBe('worldpraiseradio@gmail.com');
+  });
+});
+
+describe('Full Song Video Mode: Audiospliter Chunking, Vocal DSP Lyric Sync & On-The-Fly Commensurate Frames', () => {
+  it('should chunk audio using target_scene_count (e.g. 20 chunks) and fixed_interval (Audiospliter Min:Sec)', async () => {
+    const twentyChunks = computeSmartAudioChunkBoundaries({
+      durationSec: 40,
+      chunkMode: 'target_scene_count',
+      targetSceneCount: 20,
+      uploadedImageCount: 14
+    });
+    expect(twentyChunks.length).toBe(20);
+    expect(twentyChunks[0].startSec).toBe(0);
+    expect(twentyChunks[19].endSec).toBeCloseTo(40, 0);
+
+    const intervalChunks = computeSmartAudioChunkBoundaries({
+      durationSec: 40,
+      chunkMode: 'fixed_interval',
+      fixedIntervalSec: 10
+    });
+    expect(intervalChunks.length).toBe(4);
+    expect(intervalChunks[0].endSec - intervalChunks[0].startSec).toBeCloseTo(10, 1);
+  });
+
+  it('should sync lyrics with audio signal (AI + Vocal DSP) and generate LRC output', () => {
+    const boundaries = computeSmartAudioChunkBoundaries({
+      durationSec: 20,
+      chunkMode: 'target_scene_count',
+      targetSceneCount: 4
+    });
+
+    const lyrics = `[00:00.50] First vocal phrase in the spotlight\n[00:05.50] Second vocal phrase rising higher\n[00:10.50] Third chorus harmony in motion\n[00:15.50] Final cadence under warm stage glow`;
+    const syncRes = syncLyricsWithAudioSignal({
+      chunks: boundaries,
+      rawLyrics: lyrics,
+      songTitle: 'Spotlight Test'
+    });
+
+    expect(syncRes.alignedChunks.length).toBe(4);
+    expect(syncRes.lrcFormattedText).toContain('[00:');
+    expect(syncRes.alignedChunks[0].syncedLyrics).toContain('First vocal phrase');
+  });
+
+  it('should automatically synthesize commensurate scene frames on-the-fly when uploaded storyboard images fall short of total chunks', async () => {
+    const demoWav = await generateDemoVocalWavBlob('Commensurate frame shortfall test', 24);
+    // Upload 3 images for 6 chunks -> 3 uploaded + 3 commensurate_synthesized on-the-fly
+    const uploadedImages = [
+      'https://images.unsplash.com/photo-1516280440614-37939bbacd81?w=600',
+      'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600',
+      'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=600'
+    ];
+
+    const result = await buildFullSongVideoChunks({
+      audioSource: demoWav,
+      songTitle: 'Shortfall Test Song',
+      rawLyrics: 'Line one\nLine two\nLine three\nLine four\nLine five\nLine six',
+      uploadedImageUrls: uploadedImages,
+      chunkMode: 'target_scene_count',
+      targetSceneCount: 6,
+      aspectRatio: '16:9',
+      selectedModelId: 'lipsyncer-dsp-60fps'
+    });
+
+    expect(result.chunks.length).toBe(6);
+    expect(result.shortfallFilledCount).toBe(3);
+
+    // First 3 chunks use uploaded storyboard frames
+    expect(result.chunks[0].frameSourceType).toBe('uploaded');
+    expect(result.chunks[1].frameSourceType).toBe('uploaded');
+    expect(result.chunks[2].frameSourceType).toBe('uploaded');
+
+    // Remaining 3 shortfall chunks are synthesized on-the-fly
+    expect(result.chunks[3].frameSourceType).toBe('commensurate_synthesized');
+    expect(result.chunks[4].frameSourceType).toBe('commensurate_synthesized');
+    expect(result.chunks[5].frameSourceType).toBe('commensurate_synthesized');
+
+    for (const chunk of result.chunks) {
+      expect(chunk.imageSourceUrl).toBeTruthy();
+      expect(chunk.prompt.toLowerCase()).toContain('zero visible text');
+      expect(chunk.audioChunkBlob).toBeInstanceOf(Blob);
+    }
+
+    // Direct call to synthesizeCommensurateSceneFrame
+    const directFrame = await synthesizeCommensurateSceneFrame({
+      chunkIndex: 4,
+      totalChunks: 6,
+      syncMode: 'LIP-SYNC',
+      aspectRatio: '16:9',
+      referenceImageUrls: uploadedImages,
+      vocalEnergyScore: 0.8
+    });
+    expect(directFrame.dataUrl.startsWith('data:image/')).toBe(true);
+    expect(directFrame.promptUsed).toContain('ZERO visible text');
   });
 });

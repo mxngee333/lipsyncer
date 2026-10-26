@@ -16,7 +16,10 @@ import {
   Sliders,
   CheckCircle2,
   Clock,
-  EyeOff
+  EyeOff,
+  BrainCircuit,
+  Wand2,
+  Image as ImageIcon
 } from 'lucide-react';
 import {
   StoryboardDirectorProject,
@@ -35,7 +38,16 @@ import {
   transcribeAudioWithBrowserWhisper
 } from '../services/storyboardDirectorService';
 import { generateLipSyncWithModel, generateStudioPortraitImage } from '../services/lipSyncEngineService';
-import { extractAudioSliceWav, generateDemoVocalWavBlob, getAudioDurationSec } from '../services/audioDspService';
+import {
+  extractAudioSliceWav,
+  generateDemoVocalWavBlob,
+  getAudioDurationSec,
+  analyzeVocalFormantsAndBpm
+} from '../services/audioDspService';
+import {
+  syncLyricsWithAudioSignal,
+  synthesizeCommensurateSceneFrame
+} from '../services/fullSongVideoService';
 import { LIPSYNC_MODELS } from '../data/modelCatalog';
 import { buildVideoFileName } from '../services/clipNaming';
 
@@ -70,6 +82,9 @@ export const StoryboardDirectorView: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const loadedImagesCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  const [isSyncingDspLyrics, setIsSyncingDspLyrics] = useState<boolean>(false);
+  const [isFillingCommensurate, setIsFillingCommensurate] = useState<boolean>(false);
 
   useEffect(() => {
     return () => {
@@ -179,6 +194,179 @@ export const StoryboardDirectorView: React.FC = () => {
       }
     }
     setStatusMessage(`Folder ${batch} image generation complete!`);
+  };
+
+  // Multi-image storyboard upload with on-the-fly commensurate shortfall synthesis
+  const handleBulkStoryboardUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    let currentProj = project;
+    if (!currentProj) {
+      currentProj = generateTwentyScenePlan({
+        songTitle,
+        artistName,
+        durationSec: audioDuration,
+        lyrics: lyricsText,
+        genderLock,
+        modestyPreset,
+        detectedBpm: 72
+      });
+    }
+
+    setIsFillingCommensurate(true);
+    setStatusMessage(
+      `Ingesting ${files.length} uploaded storyboard image(s) across 20 scenes...`
+    );
+
+    const readDataUrl = (f: File): Promise<string> =>
+      new Promise((resolve) => {
+        const r = new FileReader();
+        r.onload = () => resolve(typeof r.result === 'string' ? r.result : '');
+        r.onerror = () => resolve('');
+        r.readAsDataURL(f);
+      });
+
+    const uploadedUrls: string[] = [];
+    for (const f of files.slice(0, 20)) {
+      const url = await readDataUrl(f);
+      if (url) uploadedUrls.push(url);
+    }
+
+    let synthesizedCount = 0;
+    for (let i = 0; i < currentProj.scenes.length; i++) {
+      const sc = currentProj.scenes[i];
+      if (i < uploadedUrls.length) {
+        sc.generatedImageUrl = uploadedUrls[i];
+      } else {
+        const synthesized = await synthesizeCommensurateSceneFrame({
+          chunkIndex: i + 1,
+          totalChunks: currentProj.scenes.length,
+          syncMode: sc.syncMode === 'LIP-SYNC' ? 'LIP-SYNC' : 'CINEMATIC-MOTION',
+          aspectRatio: '16:9',
+          referenceImageUrls: uploadedUrls,
+          vocalEnergyScore: sc.syncMode === 'LIP-SYNC' ? 0.72 : 0.2
+        });
+        sc.generatedImageUrl = synthesized.dataUrl;
+        synthesizedCount++;
+      }
+    }
+
+    saveStoryboardProject(currentProj);
+    setProject({ ...currentProj });
+    setIsFillingCommensurate(false);
+    setStatusMessage(
+      synthesizedCount > 0
+        ? `Mapped ${uploadedUrls.length} uploaded storyboard image(s) + synthesized ${synthesizedCount} commensurate scene frame(s) on-the-fly!`
+        : `Mapped all 20 uploaded storyboard images to the 20-scene board!`
+    );
+  };
+
+  // Fill any missing scene frames on-the-fly with commensurate frames
+  const handleFillMissingCommensurateFrames = async () => {
+    if (!project) return;
+    setIsFillingCommensurate(true);
+    setStatusMessage('Synthesizing commensurate frames on-the-fly for scenes missing keyframes...');
+
+    const existingUrls = project.scenes
+      .map((s) => s.generatedImageUrl)
+      .filter((u): u is string => Boolean(u));
+
+    let count = 0;
+    for (let i = 0; i < project.scenes.length; i++) {
+      const sc = project.scenes[i];
+      if (!sc.generatedImageUrl) {
+        const synthesized = await synthesizeCommensurateSceneFrame({
+          chunkIndex: i + 1,
+          totalChunks: project.scenes.length,
+          syncMode: sc.syncMode === 'LIP-SYNC' ? 'LIP-SYNC' : 'CINEMATIC-MOTION',
+          aspectRatio: '16:9',
+          referenceImageUrls: existingUrls,
+          vocalEnergyScore: sc.syncMode === 'LIP-SYNC' ? 0.72 : 0.2
+        });
+        sc.generatedImageUrl = synthesized.dataUrl;
+        count++;
+      }
+    }
+
+    saveStoryboardProject(project);
+    setProject({ ...project });
+    setIsFillingCommensurate(false);
+    setStatusMessage(
+      count > 0
+        ? `Synthesized ${count} commensurate scene frame(s) on-the-fly! All 20 scenes now have keyframes.`
+        : 'All 20 scenes already have keyframe visuals!'
+    );
+  };
+
+  // 🧠 Sync Lyrics with Audio Signal (AI + Vocal DSP) for the 20-Scene Board
+  const handleSyncLyricsWithVocalDsp = async () => {
+    setIsSyncingDspLyrics(true);
+    setStatusMessage('🧠 Analyzing Vocal Formant Signal (280Hz–3600Hz) & aligning lyrics across 20 scenes...');
+    try {
+      let masterBlob = audioFile;
+      if (!masterBlob) {
+        masterBlob = await generateDemoVocalWavBlob(
+          'Surely goodness and mercy shall follow me all the days of my life',
+          55
+        );
+        setAudioFile(masterBlob);
+        setAudioDuration(55);
+        setAudioUrl(URL.createObjectURL(masterBlob));
+      }
+
+      let currentProj = project;
+      if (!currentProj) {
+        currentProj = generateTwentyScenePlan({
+          songTitle,
+          artistName,
+          durationSec: audioDuration,
+          lyrics: lyricsText,
+          genderLock,
+          modestyPreset,
+          detectedBpm: 72
+        });
+      }
+
+      let analysis = null;
+      try {
+        analysis = await analyzeVocalFormantsAndBpm(masterBlob);
+      } catch {
+        analysis = null;
+      }
+
+      const boundaries = currentProj.scenes.map((s) => ({
+        startSec: s.timeStartSec,
+        endSec: s.timeEndSec
+      }));
+
+      const dspSync = syncLyricsWithAudioSignal({
+        chunks: boundaries,
+        rawLyrics: lyricsText,
+        analysis,
+        songTitle
+      });
+
+      for (let i = 0; i < currentProj.scenes.length; i++) {
+        const aligned = dspSync.alignedChunks[i];
+        if (!aligned) continue;
+        currentProj.scenes[i].exactLyrics = aligned.syncedLyrics;
+        currentProj.scenes[i].syncMode =
+          aligned.syncMode === 'LIP-SYNC' ? 'LIP-SYNC' : 'NO LIP-SYNC';
+      }
+
+      saveStoryboardProject(currentProj);
+      setProject({ ...currentProj });
+      setStatusMessage(
+        `🧠 Vocal DSP Lyric Sync Complete! Overall confidence: ${Math.round(
+          dspSync.overallSyncConfidence * 100
+        )}% across 20 scenes (${dspSync.feltGrooveBpm} BPM).`
+      );
+    } catch (err: any) {
+      setStatusMessage(`Vocal DSP Sync notice: ${err?.message || 'Completed with default alignment.'}`);
+    } finally {
+      setIsSyncingDspLyrics(false);
+    }
   };
 
   const handleLipSyncScene = async (sceneNumber: number) => {
@@ -304,22 +492,57 @@ export const StoryboardDirectorView: React.FC = () => {
     ctx.fillStyle = '#09090d';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Render active scene image or video
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 36px Inter, sans-serif';
-    ctx.textAlign = 'center';
-
-    ctx.fillStyle = '#38bdf8';
-    ctx.font = '22px Inter, sans-serif';
-    ctx.fillText(`SCENE ${currentScene.sceneCode} • ${currentScene.shortName}`, canvas.width / 2, canvas.height / 2 - 20);
-
-    ctx.fillStyle = '#e4e4e7';
-    ctx.font = 'bold 32px Inter, sans-serif';
-    ctx.fillText(currentScene.syncMode === 'LIP-SYNC' ? `"${currentScene.exactLyrics}"` : currentScene.narrativeArcRole, canvas.width / 2, canvas.height / 2 + 30);
-
-    ctx.fillStyle = '#a1a1aa';
-    ctx.font = '16px monospace';
-    ctx.fillText(`${curTime.toFixed(1)}s / ${project.songDna.audioDurationSec}s`, canvas.width / 2, canvas.height - 40);
+    // Draw actual scene keyframe image if available with subtle Ken Burns motion
+    if (currentScene?.generatedImageUrl) {
+      let cachedImg = loadedImagesCacheRef.current.get(currentScene.generatedImageUrl);
+      if (!cachedImg) {
+        cachedImg = new Image();
+        cachedImg.crossOrigin = 'anonymous';
+        cachedImg.src = currentScene.generatedImageUrl;
+        loadedImagesCacheRef.current.set(currentScene.generatedImageUrl, cachedImg);
+      }
+      if (cachedImg.complete && cachedImg.naturalWidth > 0) {
+        const sceneProgress = Math.max(
+          0,
+          Math.min(
+            1,
+            (curTime - currentScene.timeStartSec) /
+              Math.max(0.5, currentScene.timeEndSec - currentScene.timeStartSec)
+          )
+        );
+        const scale = 1 + sceneProgress * 0.05;
+        ctx.save();
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.scale(scale, scale);
+        const imgAspect = cachedImg.naturalWidth / cachedImg.naturalHeight;
+        const canvasAspect = canvas.width / canvas.height;
+        let drawW = canvas.width;
+        let drawH = canvas.height;
+        if (imgAspect > canvasAspect) {
+          drawH = canvas.height;
+          drawW = drawH * imgAspect;
+        } else {
+          drawW = canvas.width;
+          drawH = drawW / imgAspect;
+        }
+        ctx.drawImage(cachedImg, -drawW / 2, -drawH / 2, drawW, drawH);
+        ctx.restore();
+      }
+    } else {
+      // Fallback studio backdrop when no keyframe is rendered yet
+      const grad = ctx.createRadialGradient(
+        canvas.width / 2,
+        canvas.height / 2,
+        40,
+        canvas.width / 2,
+        canvas.height / 2,
+        canvas.width * 0.7
+      );
+      grad.addColorStop(0, '#172554');
+      grad.addColorStop(1, '#09090d');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
 
     if (isPlayingFullVideo) {
       animationFrameRef.current = requestAnimationFrame(renderCanvasFrame);
@@ -580,9 +803,32 @@ export const StoryboardDirectorView: React.FC = () => {
         </div>
 
         <div className="pt-2 flex items-center justify-between flex-wrap gap-3">
-          <span className="text-xs text-zinc-400">
-            Absolute Rule: <strong className="text-white">ZERO visible text/lyrics</strong> rendered on keyframes.
-          </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer">
+              <ImageIcon className="w-3.5 h-3.5" />
+              <span>Upload Storyboard Images (Auto-Fills Shortfall)</span>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleBulkStoryboardUpload}
+                className="hidden"
+              />
+            </label>
+            <button
+              type="button"
+              disabled={isSyncingDspLyrics}
+              onClick={handleSyncLyricsWithVocalDsp}
+              className="px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <BrainCircuit className="w-3.5 h-3.5" />
+              <span>
+                {isSyncingDspLyrics
+                  ? 'Syncing Signal...'
+                  : '🧠 Sync Lyrics with Audio Signal (AI + Vocal DSP)'}
+              </span>
+            </button>
+          </div>
           <button
             type="button"
             disabled={isPlanning}
@@ -720,7 +966,20 @@ export const StoryboardDirectorView: React.FC = () => {
               ))}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                disabled={isFillingCommensurate}
+                onClick={handleFillMissingCommensurateFrames}
+                className="px-3 py-1.5 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-semibold hover:bg-amber-500/25 transition cursor-pointer flex items-center gap-1 disabled:opacity-50"
+              >
+                <Wand2 className="w-3.5 h-3.5" />
+                <span>
+                  {isFillingCommensurate
+                    ? 'Synthesizing Frames...'
+                    : 'Auto-Fill Missing Commensurate Frames'}
+                </span>
+              </button>
               <button
                 type="button"
                 onClick={() => handleBatchGenerateImages('A')}

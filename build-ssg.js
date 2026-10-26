@@ -34,6 +34,18 @@ const CANONICAL_ROUTES = [
     `
   },
   {
+    route: '/full-song-video/',
+    priority: '0.9',
+    changefreq: 'weekly',
+    title: 'Full Song Video Mode — Storyboard Chunker, Vocal DSP Lyric Sync & Commensurate Frame Synthesizer | LipSyncer AI',
+    description:
+      'Upload a full song track and storyboard images, intelligently chunk audio at vocal breath valleys, sync lyrics with the vocal formant signal, synthesize commensurate scene frames on-the-fly when images fall short, and merge an exact 1080p MP4 music video.',
+    heading: 'Full Song Video Mode & Audiospliter Vocal DSP Engine',
+    bodyHtml: `
+      <p>Upload any full-length song and multiple storyboard images to produce a complete, lip-synced music video. Powered by our <strong>Audiospliter Vocal DSP Chunker</strong>, LipSyncer slices audio at breath valleys so cuts never interrupt mid-syllable, aligns lyrics directly with the 280Hz–3600Hz vocal formant signal, and <strong>synthesizes commensurate scene frames on-the-fly</strong> whenever uploaded storyboard images fall short of the total audio chunks.</p>
+    `
+  },
+  {
     route: '/storyboard-director/',
     priority: '0.9',
     changefreq: 'weekly',
@@ -140,7 +152,7 @@ function runSsg() {
       );
 
     // Inject crawlable semantic <main> fallback inside #root (replaced cleanly when React mounts)
-    const semanticShell = `<div id="root"><main style="max-width:960px;margin:0 auto;padding:48px 24px;color:#e4e4e7;font-family:Inter,system-ui,sans-serif"><header><h1 style="font-size:2rem;font-weight:800;margin-bottom:16px">${page.heading}</h1></header><section style="line-height:1.7;color:#a1a1aa">${page.bodyHtml}</section><footer style="margin-top:40px;padding-top:20px;border-top:1px solid #27272a;font-size:0.85rem"><nav style="display:flex;gap:16px;flex-wrap:wrap"><a href="/" style="color:#a78bfa">Studio</a><a href="/models/" style="color:#a78bfa">Models</a><a href="/storyboard-director/" style="color:#a78bfa">20-Scene Director</a><a href="/arena/" style="color:#a78bfa">Model Arena</a><a href="/how-to-use/" style="color:#a78bfa">How to Use</a><a href="/about/" style="color:#a78bfa">About</a><a href="/privacy/" style="color:#a78bfa">Privacy</a><a href="/terms/" style="color:#a78bfa">Terms</a></nav></footer></main></div>`;
+    const semanticShell = `<div id="root"><main style="max-width:960px;margin:0 auto;padding:48px 24px;color:#e4e4e7;font-family:Inter,system-ui,sans-serif"><header><h1 style="font-size:2rem;font-weight:800;margin-bottom:16px">${page.heading}</h1></header><section style="line-height:1.7;color:#a1a1aa">${page.bodyHtml}</section><footer style="margin-top:40px;padding-top:20px;border-top:1px solid #27272a;font-size:0.85rem"><nav style="display:flex;gap:16px;flex-wrap:wrap"><a href="/" style="color:#a78bfa">Studio</a><a href="/full-song-video/" style="color:#a78bfa">Full Song Video</a><a href="/models/" style="color:#a78bfa">Models</a><a href="/storyboard-director/" style="color:#a78bfa">20-Scene Director</a><a href="/arena/" style="color:#a78bfa">Model Arena</a><a href="/how-to-use/" style="color:#a78bfa">How to Use</a><a href="/about/" style="color:#a78bfa">About</a><a href="/privacy/" style="color:#a78bfa">Privacy</a><a href="/terms/" style="color:#a78bfa">Terms</a></nav></footer></main></div>`;
 
     html = html.replace('<div id="root"></div>', semanticShell);
 

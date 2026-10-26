@@ -5,8 +5,8 @@
 **Live Production URL:** [https://lipsyncer.web.app](https://lipsyncer.web.app)  
 **GitHub Repository:** [https://github.com/mxngee333/lipsyncer](https://github.com/mxngee333/lipsyncer)  
 **Firebase Dedicated Target:** Project `modelissacom` → Site `lipsyncer` (Rule 112 Multi-Site Compliance)  
-**Test Suite:** 8 / 8 Vitest unit tests passing (100% green checkmarks)  
-**Build Engine:** Vite 6 + Tailwind CSS v4 + Static Site Generation (8 Physical HTML Routes + Sitemap + Robots)
+**Test Suite:** 13 / 13 Vitest unit tests passing (100% green checkmarks)  
+**Build Engine:** Vite 6 + Tailwind CSS v4 + Static Site Generation (9 Physical HTML Routes + Sitemap + Robots)
 
 ---
 
@@ -89,11 +89,21 @@ Directly ported from `music-video-storyboard-director`, this section provides an
 ## 🚀 Live Production Links & Verification
 
 - **Live Web App:** [https://lipsyncer.web.app](https://lipsyncer.web.app)
+- **Full Song Video Mode Route:** [https://lipsyncer.web.app/full-song-video/](https://lipsyncer.web.app/full-song-video/)
 - **Model Directory Route:** [https://lipsyncer.web.app/models/](https://lipsyncer.web.app/models/)
 - **Storyboard Director Route:** [https://lipsyncer.web.app/storyboard-director/](https://lipsyncer.web.app/storyboard-director/)
 - **Model Arena Route:** [https://lipsyncer.web.app/arena/](https://lipsyncer.web.app/arena/)
 - **Documentation & How-to:** [https://lipsyncer.web.app/how-to-use/](https://lipsyncer.web.app/how-to-use/)
 - **Sitemap XML:** [https://lipsyncer.web.app/sitemap.xml](https://lipsyncer.web.app/sitemap.xml)
 - **GitHub Repository:** [https://github.com/mxngee333/lipsyncer](https://github.com/mxngee333/lipsyncer)
+
+---
+
+## 🎵 Full Song Video Mode & Audiospliter Vocal DSP Engine
+
+- **Intelligent Audio Chunking (`computeSmartAudioChunkBoundaries`):** Supports **Smart Vocal DSP Breath-Valley Chunking**, **Audiospliter Fixed `Min : Sec` Interval Splitting**, and **Target Scene Count** (e.g., 20 scenes), with 1-click `.zip` export of all sample-accurate 16-bit PCM WAV chunks (`packageAudioChunksZip`).
+- **🧠 Sync Lyrics with Audio Signal (AI + Vocal DSP) (`syncLyricsWithAudioSignal`):** Pairs in-browser WebAssembly Whisper AI transcription with 50Hz vocal formant energy analysis (`280Hz–3600Hz`) and LRC timestamp alignment, automatically toggling `LIP-SYNC` vs `CINEMATIC-MOTION` per chunk.
+- **On-The-Fly Commensurate Scene Frame Synthesis (`synthesizeCommensurateSceneFrame`):** Automatically detects when uploaded storyboard images fall short of total audio chunks (e.g., 14 uploaded images for 20 chunks) and synthesizes commensurate 1080p cinema frames on-the-fly anchored to the uploaded reference art with **ZERO on-screen text**.
+- **Exact, Clean 1080p MP4 Master Video Merger (`mergeFullSongVideoMaster`):** Stitches all chunk clips and 60fps vocal-formant-articulated frames against the **single uncut master song audio track** with `0.18s` optical cross-dissolves and sub-millisecond adaptive clock rate sync, eliminating boundary pops or audio drift.
 
 *Mission "666" fully accomplished by The 24 Elders.*
