@@ -7,6 +7,9 @@ import {
   FullSongSceneFrameSource,
   FullSongVideoChunk,
   GeneratedLipSyncClip,
+  OmniHtmlGuideParsedProject,
+  OmniHtmlGuideSceneData,
+  OmniPromptEdition,
   UnraveledStoryboardFrame,
   UnraveledStoryboardSetResult
 } from '../types';
@@ -23,6 +26,10 @@ import {
   generateLipSyncWithModel,
   generateStudioPortraitImage
 } from './lipSyncEngineService';
+import {
+  classifySceneEditionWithGeniusIntelligence,
+  parseOmniNavigatorHtmlGuide
+} from './omniHtmlGuideService';
 import { formatTimeWindow, parseLyricsIntoVerses } from './storyboardDirectorService';
 import { saveGenerationRecord } from './mediaVaultDb';
 import { getSessionUser, uploadVideoToR2Vault } from './r2VaultService';
@@ -314,7 +321,8 @@ export function buildOrderedStoryboardSetSummary(
   frames: UnraveledStoryboardFrame[],
   targetTotal = 20,
   detectedSongTitle?: string,
-  detectedManifestLyrics?: string
+  detectedManifestLyrics?: string,
+  parsedOmniGuide?: OmniHtmlGuideParsedProject
 ): UnraveledStoryboardSetResult {
   const byNumber = new Map<number, UnraveledStoryboardFrame>();
   for (const f of frames) {
@@ -349,18 +357,20 @@ export function buildOrderedStoryboardSetSummary(
     folderBCount,
     missingSceneNumbers,
     detectedSongTitle,
-    detectedManifestLyrics
+    detectedManifestLyrics,
+    parsedOmniGuide
   };
 }
 
 /**
- * Unravels ChatGPT 2-ZIP Storyboard Sets (`Folder_A_Images_01_10.zip` + `Folder_B_Images_11_20.zip`)
- * and/or loose image files in ANY upload order (even when ZIP internal entries are scrambled like
- * 04, 07, 08, 10... or when Folder B is selected before Folder A) into a strictly ordered 01 -> 20 set.
+ * Unravels ChatGPT 2-ZIP Storyboard Sets (`Folder_A_Images_01_10.zip` + `Folder_B_Images_11_20.zip`),
+ * Omni Classic HTML Guide files (`..._OMNI_Classic_HTML_...html`), and/or loose image files
+ * in ANY upload order into a strictly ordered 01 -> 20 set with Genius Lip-Sync vs Just-Animate intelligence.
  */
 export async function unravelStoryboardFilesAndZips(params: {
   files: File[];
   existingFrames?: UnraveledStoryboardFrame[];
+  existingOmniGuide?: OmniHtmlGuideParsedProject;
   forcedBatch?: 'A' | 'B' | 'AUTO';
   targetTotal?: number;
   onProgress?: (message: string) => void;
@@ -368,6 +378,7 @@ export async function unravelStoryboardFilesAndZips(params: {
   const {
     files,
     existingFrames = [],
+    existingOmniGuide,
     forcedBatch = 'AUTO',
     targetTotal = 20,
     onProgress
@@ -378,12 +389,42 @@ export async function unravelStoryboardFilesAndZips(params: {
     frameMap.set(existing.sceneNumber, existing);
   }
 
-  let detectedSongTitle: string | undefined;
+  let detectedSongTitle: string | undefined = existingOmniGuide?.songTitle;
   let detectedManifestLyrics: string | undefined;
+  let parsedOmniGuide: OmniHtmlGuideParsedProject | undefined = existingOmniGuide;
   const globalManifestMap = new Map<
     number,
     { lyrics?: string; prompt?: string; startSec?: number; endSec?: number }
   >();
+
+  const applyOmniGuideToMaps = (guide: OmniHtmlGuideParsedProject) => {
+    parsedOmniGuide = guide;
+    if (guide.songTitle && !detectedSongTitle) {
+      detectedSongTitle = guide.songTitle;
+    }
+    const lyricLines: string[] = [];
+    for (const sc of guide.scenes) {
+      if (sc.cleanSungLyrics && !/NONE/i.test(sc.cleanSungLyrics)) {
+        lyricLines.push(sc.cleanSungLyrics);
+      }
+      globalManifestMap.set(sc.sceneNumber, {
+        lyrics: sc.cleanSungLyrics,
+        prompt:
+          sc.geniusRecommendedEdition === 'ACTION_ONLY_ANIMATE'
+            ? sc.actionOnlyOmniPrompt
+            : sc.primaryOmniPrompt,
+        startSec: sc.startTimeSec,
+        endSec: sc.endTimeSec
+      });
+    }
+    if (lyricLines.length > 0 && !detectedManifestLyrics) {
+      detectedManifestLyrics = lyricLines.join('\n');
+    }
+  };
+
+  if (existingOmniGuide) {
+    applyOmniGuideToMaps(existingOmniGuide);
+  }
 
   const mimeFromExt = (name: string): string => {
     const ext = (name.split('.').pop() || '').toLowerCase();
@@ -409,17 +450,22 @@ export async function unravelStoryboardFilesAndZips(params: {
       const zip = await JSZip.loadAsync(file);
       const entryNames = Object.keys(zip.files);
 
-      // 1. Check for any manifest / Omni .txt inside the ZIP first
+      // 1. Check for any Omni .html or manifest .txt inside the ZIP first
       for (const entryPath of entryNames) {
         const entry = zip.files[entryPath];
         if (entry.dir) continue;
         if (entryPath.includes('__MACOSX') || entryPath.split('/').pop()?.startsWith('._')) {
           continue;
         }
-        if (/\.txt$/i.test(entryPath)) {
+        if (/\.(html?|txt)$/i.test(entryPath)) {
           try {
-            const txt = await entry.async('string');
-            const parsedManifest = parseStoryboardManifestTxt(txt);
+            const rawText = await entry.async('string');
+            const maybeOmni = parseOmniNavigatorHtmlGuide(rawText);
+            if (maybeOmni && maybeOmni.scenes.length > 0) {
+              applyOmniGuideToMaps(maybeOmni);
+              continue;
+            }
+            const parsedManifest = parseStoryboardManifestTxt(rawText);
             if (parsedManifest.combinedLyrics && !detectedManifestLyrics) {
               detectedManifestLyrics = parsedManifest.combinedLyrics;
             }
@@ -427,7 +473,7 @@ export async function unravelStoryboardFilesAndZips(params: {
               globalManifestMap.set(k, v);
             }
           } catch {
-            // Ignore unreadable txt
+            // Ignore unreadable entry
           }
         }
       }
@@ -465,33 +511,45 @@ export async function unravelStoryboardFilesAndZips(params: {
         const mime = mimeFromExt(item.meta.originalFileName);
         const dataUrl = `data:${mime};base64,${base64}`;
         const manifestInfo = globalManifestMap.get(item.meta.sceneNumber);
+        const omniScene = parsedOmniGuide?.scenes.find(
+          (s) => s.sceneNumber === item.meta.sceneNumber
+        );
 
         frameMap.set(item.meta.sceneNumber, {
           sceneNumber: item.meta.sceneNumber,
           sceneCode: item.meta.sceneCode,
           folderBatch: item.meta.folderBatch,
-          sceneTitle: item.meta.sceneTitle,
+          sceneTitle: omniScene?.sceneTitle || item.meta.sceneTitle,
           originalFileName: item.meta.originalFileName,
           sourceArchiveName: fileName,
           dataUrl,
-          parsedStartSec: item.meta.parsedStartSec ?? manifestInfo?.startSec,
-          parsedEndSec: item.meta.parsedEndSec ?? manifestInfo?.endSec,
-          manifestLyrics: manifestInfo?.lyrics,
-          manifestPrompt: manifestInfo?.prompt
+          parsedStartSec:
+            omniScene?.startTimeSec ?? item.meta.parsedStartSec ?? manifestInfo?.startSec,
+          parsedEndSec:
+            omniScene?.endTimeSec ?? item.meta.parsedEndSec ?? manifestInfo?.endSec,
+          manifestLyrics: omniScene?.cleanSungLyrics ?? manifestInfo?.lyrics,
+          manifestPrompt: manifestInfo?.prompt,
+          omniSceneGuide: omniScene
         });
       }
-    } else if (lowerName.endsWith('.txt')) {
+    } else if (lowerName.endsWith('.html') || lowerName.endsWith('.htm') || lowerName.endsWith('.txt')) {
       try {
-        const txt = await file.text();
-        const parsedManifest = parseStoryboardManifestTxt(txt);
-        if (parsedManifest.combinedLyrics && !detectedManifestLyrics) {
-          detectedManifestLyrics = parsedManifest.combinedLyrics;
-        }
-        for (const [k, v] of parsedManifest.scenesMap.entries()) {
-          globalManifestMap.set(k, v);
+        onProgress?.(`Parsing Omni HTML/Text Guide: ${fileName}...`);
+        const rawText = await file.text();
+        const maybeOmni = parseOmniNavigatorHtmlGuide(rawText);
+        if (maybeOmni && maybeOmni.scenes.length > 0) {
+          applyOmniGuideToMaps(maybeOmni);
+        } else {
+          const parsedManifest = parseStoryboardManifestTxt(rawText);
+          if (parsedManifest.combinedLyrics && !detectedManifestLyrics) {
+            detectedManifestLyrics = parsedManifest.combinedLyrics;
+          }
+          for (const [k, v] of parsedManifest.scenesMap.entries()) {
+            globalManifestMap.set(k, v);
+          }
         }
       } catch {
-        // Ignore txt read error
+        // Ignore read error
       }
     } else if (/\.(png|jpe?g|webp|gif|bmp)$/i.test(lowerName) || file.type.startsWith('image/')) {
       const relativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || fileName;
@@ -503,30 +561,45 @@ export async function unravelStoryboardFilesAndZips(params: {
       });
       const dataUrl = await blobToDataUrl(file);
       const manifestInfo = globalManifestMap.get(meta.sceneNumber);
+      const omniScene = parsedOmniGuide?.scenes.find(
+        (s) => s.sceneNumber === meta.sceneNumber
+      );
 
       frameMap.set(meta.sceneNumber, {
         sceneNumber: meta.sceneNumber,
         sceneCode: meta.sceneCode,
         folderBatch: meta.folderBatch,
-        sceneTitle: meta.sceneTitle,
+        sceneTitle: omniScene?.sceneTitle || meta.sceneTitle,
         originalFileName: meta.originalFileName,
         dataUrl,
-        parsedStartSec: meta.parsedStartSec ?? manifestInfo?.startSec,
-        parsedEndSec: meta.parsedEndSec ?? manifestInfo?.endSec,
-        manifestLyrics: manifestInfo?.lyrics,
-        manifestPrompt: manifestInfo?.prompt
+        parsedStartSec:
+          omniScene?.startTimeSec ?? meta.parsedStartSec ?? manifestInfo?.startSec,
+        parsedEndSec:
+          omniScene?.endTimeSec ?? meta.parsedEndSec ?? manifestInfo?.endSec,
+        manifestLyrics: omniScene?.cleanSungLyrics ?? manifestInfo?.lyrics,
+        manifestPrompt: manifestInfo?.prompt,
+        omniSceneGuide: omniScene
       });
     }
   }
 
-  // Enrich any frames if manifest was parsed after image
+  // Enrich any frames if Omni Guide or manifest was parsed after image
   for (const [scNum, info] of globalManifestMap.entries()) {
     const existing = frameMap.get(scNum);
     if (existing) {
-      existing.manifestLyrics = existing.manifestLyrics ?? info.lyrics;
-      existing.manifestPrompt = existing.manifestPrompt ?? info.prompt;
-      existing.parsedStartSec = existing.parsedStartSec ?? info.startSec;
-      existing.parsedEndSec = existing.parsedEndSec ?? info.endSec;
+      const omniScene = parsedOmniGuide?.scenes.find((s) => s.sceneNumber === scNum);
+      if (omniScene) {
+        existing.omniSceneGuide = omniScene;
+        existing.sceneTitle = omniScene.sceneTitle || existing.sceneTitle;
+        existing.parsedStartSec = omniScene.startTimeSec;
+        existing.parsedEndSec = omniScene.endTimeSec;
+        existing.manifestLyrics = omniScene.cleanSungLyrics;
+      } else {
+        existing.manifestLyrics = existing.manifestLyrics ?? info.lyrics;
+        existing.manifestPrompt = existing.manifestPrompt ?? info.prompt;
+        existing.parsedStartSec = existing.parsedStartSec ?? info.startSec;
+        existing.parsedEndSec = existing.parsedEndSec ?? info.endSec;
+      }
     }
   }
 
@@ -534,7 +607,8 @@ export async function unravelStoryboardFilesAndZips(params: {
     Array.from(frameMap.values()),
     targetTotal,
     detectedSongTitle,
-    detectedManifestLyrics
+    detectedManifestLyrics,
+    parsedOmniGuide
   );
 }
 
@@ -1027,12 +1101,36 @@ export async function synthesizeCommensurateSceneFrame(params: {
 }
 
 /**
+ * Switches a single `FullSongVideoChunk` between the two Omni HTML Guide Prompt Editions:
+ * - `PRIMARY_LIPSYNC` (Bar-by-Bar Lip-Sync Singing Version)
+ * - `ACTION_ONLY_ANIMATE` (Just Animate / Non-Singing Story Continuity Version)
+ */
+export function switchChunkPromptEdition(
+  chunk: FullSongVideoChunk,
+  edition: OmniPromptEdition
+): FullSongVideoChunk {
+  const isLipSync = edition === 'PRIMARY_LIPSYNC';
+  const nextPrompt = isLipSync
+    ? chunk.primaryOmniPrompt || chunk.prompt
+    : chunk.actionOnlyOmniPrompt ||
+      `NO ON-SCREEN TEXT: Zero visible text.\nSCENE: ${chunk.chunkCode}A\nSYNC MODE: NO LIP-SYNC\nABSOLUTE RULE: NO SINGING. NO LIP-SYNC. NO DIALOGUE. Keep the mouth naturally relaxed and mostly closed.\nPROMPT: ${chunk.actionOnlySummary || 'Continue the scene with natural story action and smooth camera pacing without singing.'}`;
+
+  return {
+    ...chunk,
+    activePromptEdition: edition,
+    syncMode: isLipSync ? 'LIP-SYNC' : 'CINEMATIC-MOTION',
+    prompt: nextPrompt
+  };
+}
+
+/**
  * Builds the complete array of `FullSongVideoChunk` objects by:
  * 1) Analysing the full song's vocal formants & BPM
- * 2) Chunking the audio intelligently (`smart_vocal_dsp`, `fixed_interval`, or `target_scene_count`)
+ * 2) Chunking the audio intelligently (`smart_vocal_dsp`, `fixed_interval`, `target_scene_count`, or exact `omniGuide` SONG EDIT WINDOWs)
  * 3) Slicing each audio chunk into a 16-bit PCM WAV Blob
  * 4) Syncing lyrics with the audio signal (Vocal DSP + AI)
- * 5) Mapping uploaded storyboard images to chunks & synthesizing on-the-fly commensurate scene frames
+ * 5) Applying Genius Contextual Scene Intelligence (`PRIMARY_LIPSYNC` vs `ACTION_ONLY_ANIMATE`)
+ * 6) Mapping uploaded storyboard images to chunks & synthesizing on-the-fly commensurate scene frames
  *    whenever uploaded images fall short of the chunk count!
  */
 export async function buildFullSongVideoChunks(params: {
@@ -1041,6 +1139,8 @@ export async function buildFullSongVideoChunks(params: {
   rawLyrics: string;
   uploadedImageUrls: string[];
   orderedStoryboardFrames?: UnraveledStoryboardFrame[];
+  omniGuide?: OmniHtmlGuideParsedProject | null;
+  useGeniusEditionSelection?: boolean;
   chunkMode: FullSongChunkMode;
   fixedIntervalSec?: number;
   targetSceneCount?: number;
@@ -1060,29 +1160,48 @@ export async function buildFullSongVideoChunks(params: {
     analysis = await analyzeVocalFormantsAndBpm(params.audioSource);
   } catch {
     const dur = await getAudioDurationSec(params.audioSource);
+    const guideBpm = params.omniGuide?.primaryGrooveBpm || 96;
     analysis = {
       durationSec: dur,
       vocalEnvelope: new Float32Array(Math.max(10, Math.floor(dur * 50))).fill(0.65),
       waveformPeaks: Array.from({ length: 120 }, (_, i) => 0.35 + 0.45 * Math.abs(Math.sin(i * 0.25))),
-      detectedBpm: 96,
-      feltGrooveBpm: 96,
-      doubleTimeBpm: 192,
+      detectedBpm: guideBpm,
+      feltGrooveBpm: guideBpm,
+      doubleTimeBpm: params.omniGuide?.doubleTimeBpm || Math.round(guideBpm * 2 * 100) / 100,
       vocalIslands: [{ startSec: 0, endSec: dur }]
     };
   }
 
-  params.onProgress?.('Calculating beat-locked & breath-valley audio chunks...', 25);
+  if (params.omniGuide?.primaryGrooveBpm) {
+    analysis.feltGrooveBpm = params.omniGuide.primaryGrooveBpm;
+    analysis.doubleTimeBpm =
+      params.omniGuide.doubleTimeBpm ||
+      Math.round(params.omniGuide.primaryGrooveBpm * 2 * 1000) / 1000;
+  }
 
-  const windows = computeSmartAudioChunkBoundaries({
-    durationSec: analysis.durationSec,
-    chunkMode: params.chunkMode,
-    fixedIntervalSec: params.fixedIntervalSec,
-    targetSceneCount: params.targetSceneCount,
-    uploadedImageCount: params.uploadedImageUrls.length,
-    analysis
-  });
+  params.onProgress?.('Calculating beat-locked & Omni Guide audio chunks...', 25);
 
-  params.onProgress?.('Syncing lyrics with audio signal (AI + Vocal DSP)...', 40);
+  const guideScenes = params.omniGuide?.scenes || [];
+  let windows: Array<{ startSec: number; endSec: number }>;
+
+  if (guideScenes.length > 0) {
+    // Lock audio chunks directly to the exact SONG EDIT WINDOW timestamps from the Omni HTML Guide!
+    windows = guideScenes.map((sc) => ({
+      startSec: sc.startTimeSec,
+      endSec: sc.endTimeSec
+    }));
+  } else {
+    windows = computeSmartAudioChunkBoundaries({
+      durationSec: analysis.durationSec,
+      chunkMode: params.chunkMode,
+      fixedIntervalSec: params.fixedIntervalSec,
+      targetSceneCount: params.targetSceneCount,
+      uploadedImageCount: params.uploadedImageUrls.length,
+      analysis
+    });
+  }
+
+  params.onProgress?.('Syncing lyrics with audio signal & Genius Scene Intelligence...', 40);
 
   const lyricSync = syncLyricsWithAudioSignal({
     chunks: windows,
@@ -1093,6 +1212,7 @@ export async function buildFullSongVideoChunks(params: {
 
   const chunks: FullSongVideoChunk[] = [];
   let shortfallFilledCount = 0;
+  const useGenius = params.useGeniusEditionSelection !== false;
   const cleanSongSlug =
     (params.songTitle || 'song').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') ||
     'song';
@@ -1122,23 +1242,74 @@ export async function buildFullSongVideoChunks(params: {
       audioChunkBlob = undefined;
     }
 
-    // 2. Pair uploaded storyboard image (by exact sceneNumber 1..20 or index) OR synthesize commensurate scene frame on the fly if short!
+    // 2. Pair uploaded storyboard image (by exact sceneNumber 1..20 or index) & Omni HTML Guide Scene
     const matchedSlotFrame = params.orderedStoryboardFrames?.find(
       (f) => f.sceneNumber === chunkIndex
     );
+    const omniScene: OmniHtmlGuideSceneData | undefined =
+      guideScenes.find((s) => s.sceneNumber === chunkIndex) ||
+      matchedSlotFrame?.omniSceneGuide;
+
     let imageSourceUrl = matchedSlotFrame?.dataUrl || params.uploadedImageUrls[i] || '';
     let frameSourceType: FullSongSceneFrameSource = 'uploaded';
+    const sceneTitleText =
+      omniScene?.sceneTitle || matchedSlotFrame?.sceneTitle || `Scene ${chunkCode}`;
     let commensurateSceneLabel = matchedSlotFrame
-      ? `Set ${matchedSlotFrame.folderBatch} #${matchedSlotFrame.sceneCode} · ${matchedSlotFrame.sceneTitle}`
-      : `Storyboard Frame #${chunkCode}`;
+      ? `Set ${matchedSlotFrame.folderBatch} #${matchedSlotFrame.sceneCode} · ${sceneTitleText}`
+      : omniScene
+        ? `Omni Scene #${chunkCode} · ${omniScene.sceneTitle}`
+        : `Storyboard Frame #${chunkCode}`;
     const camPreset = CAMERA_CYCLE[i % CAMERA_CYCLE.length];
 
-    const effectiveLyrics = matchedSlotFrame?.manifestLyrics || aligned.syncedLyrics;
-    let prompt = matchedSlotFrame?.manifestPrompt
-      ? `${matchedSlotFrame.manifestPrompt} Zero visible text.`
-      : aligned.syncMode === 'LIP-SYNC'
-        ? `Scene ${chunkCode} (${matchedSlotFrame?.sceneTitle || 'Performance'}): Lead vocalist passionately singing "${effectiveLyrics}" in studio stage lighting, exact phoneme lip-sync articulation, natural eye blinks, ${camPreset.replace('_', ' ')} camera motion. Zero visible text.`
-        : `Scene ${chunkCode} (${matchedSlotFrame?.sceneTitle || 'Atmospheric'}): Cinematic atmospheric performance B-roll, mouth naturally relaxed and closed, NO SINGING, NO LIP-SYNC, majestic ${camPreset.replace('_', ' ')} camera motion. Zero visible text.`;
+    const effectiveLyrics =
+      omniScene?.cleanSungLyrics ||
+      matchedSlotFrame?.manifestLyrics ||
+      aligned.syncedLyrics;
+
+    // 3. Build or extract both Primary (Lip-Sync) and Action-Only (Just Animate) prompts + Genius Intelligence
+    const fallbackPrimaryPrompt =
+      matchedSlotFrame?.manifestPrompt ||
+      `SCENE: ${chunkCode}\nSONG EDIT WINDOW: ${formatTimeWindow(win.startSec, win.endSec)}\nTEMPO: ${analysis.feltGrooveBpm} BPM\nSYNC MODE: LIP-SYNC\nEXACT WORDS TO LIP-SYNC - BAR BY BAR:\nBAR 1: "${effectiveLyrics}"\n10-SECOND ACTION TIMELINE:\nLead vocalist passionately singing "${effectiveLyrics}" in ${sceneTitleText}, exact phoneme lip-sync articulation, natural eye blinks, ${camPreset.replace('_', ' ')} camera motion.\nNO ON-SCREEN TEXT: Video must contain ZERO visible text.`;
+
+    const fallbackActionPrompt = `NO ON-SCREEN TEXT:\nNo subtitles, captions, visible lyrics, titles, logos or watermarks - video must contain ZERO visible text.\n\nSCENE: ${chunkCode}A\nTEMPO: ${analysis.feltGrooveBpm} BPM\nSYNC MODE: NO LIP-SYNC\nEXACT WORDS TO LIP-SYNC:\n"NONE - action-only continuation"\nABSOLUTE RULE:\nNO SINGING. NO LIP-SYNC. NO DIALOGUE. Keep the mouth naturally relaxed and mostly closed.\nPROMPT:\nNo singing. Continue ${sceneTitleText} with natural human movement, subtle breathing, warm expressions, and smooth ${camPreset.replace('_', ' ')} camera motion.`;
+
+    const primaryOmniPrompt = omniScene?.primaryOmniPrompt || fallbackPrimaryPrompt;
+    const actionOnlyOmniPrompt = omniScene?.actionOnlyOmniPrompt || fallbackActionPrompt;
+    const actionOnlySummary =
+      omniScene?.actionOnlySummary ||
+      `No singing in ${sceneTitleText}. Keep the mouth naturally relaxed and mostly closed with smooth cinematic story motion.`;
+
+    const geniusEval = omniScene
+      ? {
+          recommendedEdition: omniScene.geniusRecommendedEdition,
+          settingCategory: omniScene.geniusSettingCategory,
+          reason: omniScene.geniusReason
+        }
+      : classifySceneEditionWithGeniusIntelligence({
+          sceneNumber: chunkIndex,
+          imageFileName: matchedSlotFrame?.originalFileName || `${chunkCode}_${sceneTitleText}.png`,
+          sceneTitle: sceneTitleText,
+          guideDefaultMode: aligned.syncMode === 'LIP-SYNC' ? 'LIP-SYNC' : 'NO LIP-SYNC',
+          cleanSungLyrics: effectiveLyrics,
+          primaryOmniPrompt,
+          actionOnlyOmniPrompt
+        });
+
+    const activePromptEdition: OmniPromptEdition = useGenius
+      ? geniusEval.recommendedEdition
+      : omniScene
+        ? omniScene.guideDefaultMode === 'NO LIP-SYNC'
+          ? 'ACTION_ONLY_ANIMATE'
+          : 'PRIMARY_LIPSYNC'
+        : aligned.syncMode === 'LIP-SYNC'
+          ? 'PRIMARY_LIPSYNC'
+          : 'ACTION_ONLY_ANIMATE';
+
+    const effectiveSyncMode: 'LIP-SYNC' | 'CINEMATIC-MOTION' =
+      activePromptEdition === 'PRIMARY_LIPSYNC' ? 'LIP-SYNC' : 'CINEMATIC-MOTION';
+
+    let prompt =
+      activePromptEdition === 'PRIMARY_LIPSYNC' ? primaryOmniPrompt : actionOnlyOmniPrompt;
 
     if (!imageSourceUrl) {
       shortfallFilledCount++;
@@ -1150,14 +1321,16 @@ export async function buildFullSongVideoChunks(params: {
       const synthesized = await synthesizeCommensurateSceneFrame({
         chunkIndex,
         totalChunks: windows.length,
-        syncMode: aligned.syncMode,
+        syncMode: effectiveSyncMode,
         aspectRatio: params.aspectRatio,
         referenceImageUrls: allRefUrls,
         vocalEnergyScore: aligned.vocalEnergyScore
       });
       imageSourceUrl = synthesized.dataUrl;
-      commensurateSceneLabel = `On-The-Fly Commensurate · ${synthesized.label}`;
-      prompt = `${synthesized.promptUsed} ${prompt}`;
+      commensurateSceneLabel = `On-The-Fly Commensurate · ${omniScene ? omniScene.sceneTitle : synthesized.label}`;
+      if (!omniScene) {
+        prompt = `${synthesized.promptUsed}\n${prompt}`;
+      }
     }
 
     chunks.push({
@@ -1166,12 +1339,12 @@ export async function buildFullSongVideoChunks(params: {
       startTimeSec: win.startSec,
       endTimeSec: win.endSec,
       durationSec,
-      timeWindowFormatted: formatTimeWindow(win.startSec, win.endSec),
+      timeWindowFormatted: omniScene?.songEditWindow || formatTimeWindow(win.startSec, win.endSec),
       audioChunkBlob,
       audioChunkUrl,
       audioChunkFileName: `${cleanSongSlug}_chunk_${chunkCode}_${win.startSec.toFixed(1)}s_${win.endSec.toFixed(1)}s.wav`,
       vocalEnergyScore: aligned.vocalEnergyScore,
-      syncMode: aligned.syncMode,
+      syncMode: effectiveSyncMode,
       syncedLyrics: effectiveLyrics,
       lyricSyncConfidence: aligned.confidence,
       imageSourceUrl,
@@ -1179,13 +1352,26 @@ export async function buildFullSongVideoChunks(params: {
       commensurateSceneLabel,
       cameraMovement: camPreset,
       prompt,
+      primaryOmniPrompt,
+      actionOnlyOmniPrompt,
+      actionOnlySummary,
+      activePromptEdition,
+      geniusRecommendedEdition: geniusEval.recommendedEdition,
+      geniusSettingCategory: geniusEval.settingCategory,
+      geniusReason: geniusEval.reason,
+      barByBarLyrics: omniScene?.barByBarLyrics,
+      preLyricWindow: omniScene?.preLyricWindow,
+      lipSyncWindow: omniScene?.lipSyncWindow,
+      postLyricWindow: omniScene?.postLyricWindow,
+      lipSyncStartRelSec: omniScene?.lipSyncStartSec,
+      lipSyncEndRelSec: omniScene?.lipSyncEndSec,
       selectedModelId: params.selectedModelId || 'lipsyncer-dsp-60fps',
       status: 'ready',
       progressPercent: 0
     });
   }
 
-  params.onProgress?.('Full song chunking, lyric DSP sync & commensurate storyboard ready!', 100);
+  params.onProgress?.('Full song chunking, Omni Guide & Genius Scene Intelligence ready!', 100);
 
   return {
     chunks,
@@ -1663,8 +1849,21 @@ export async function mergeFullSongVideoMaster(params: {
           height
         );
 
-        // Apply acoustic jaw/lip articulation only when chunk is in LIP-SYNC mode & vocal signal is active
-        const effectiveVocal = chunk.syncMode === 'LIP-SYNC' ? vocalEnergy : 0;
+        // Apply acoustic jaw/lip articulation only when chunk is in LIP-SYNC mode & within active LIP-SYNC WINDOW
+        let inLipSyncSubWindow = true;
+        if (
+          chunk.lipSyncStartRelSec !== undefined &&
+          chunk.lipSyncEndRelSec !== undefined &&
+          chunk.lipSyncEndRelSec > chunk.lipSyncStartRelSec
+        ) {
+          // Scale the 10-second Omni sub-window to the chunk's actual song edit window duration
+          const scaleFactor = chunk.durationSec / 10.0;
+          const relStart = chunk.lipSyncStartRelSec * Math.min(1.0, scaleFactor);
+          const relEnd = Math.min(chunk.durationSec, chunk.lipSyncEndRelSec * Math.max(0.8, scaleFactor));
+          inLipSyncSubWindow = chunkElapsed >= relStart && chunkElapsed <= relEnd;
+        }
+        const effectiveVocal =
+          chunk.syncMode === 'LIP-SYNC' && inLipSyncSubWindow ? vocalEnergy : 0;
         if (effectiveVocal > 0.035) {
           const jawOpenPx = effectiveVocal * Math.max(4.5, height * 0.012);
           const mouthCenterX = width * 0.5;

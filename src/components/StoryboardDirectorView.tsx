@@ -24,7 +24,9 @@ import {
 import {
   StoryboardDirectorProject,
   StoryboardDirectorScene,
-  FeltTempoClass
+  FeltTempoClass,
+  OmniPromptEdition,
+  OmniHtmlGuideParsedProject
 } from '../types';
 import {
   generateTwentyScenePlan,
@@ -37,6 +39,11 @@ import {
   buildSmartProductionConsoleHtml,
   transcribeAudioWithBrowserWhisper
 } from '../services/storyboardDirectorService';
+import {
+  parseOmniNavigatorHtmlGuide,
+  getLordIAmGratefulOmniGuidePreset,
+  classifySceneEditionWithGeniusIntelligence
+} from '../services/omniHtmlGuideService';
 import { generateLipSyncWithModel, generateStudioPortraitImage } from '../services/lipSyncEngineService';
 import {
   extractAudioSliceWav,
@@ -240,6 +247,16 @@ export const StoryboardDirectorView: React.FC = () => {
       unraveled.orderedFrames.map((f) => [f.sceneNumber, f])
     );
 
+    const parsedGuide = unraveled.parsedOmniGuide || null;
+    if (parsedGuide) {
+      setSongTitle(parsedGuide.songTitle);
+      currentProj.songTitle = parsedGuide.songTitle;
+      currentProj.songDna.primaryGrooveBpm = parsedGuide.primaryGrooveBpm;
+      currentProj.songDna.audioDurationSec = parsedGuide.audioDurationSec;
+      currentProj.songDna.audioDurationFormatted = parsedGuide.audioDurationFormatted;
+      setAudioDuration(parsedGuide.audioDurationSec);
+    }
+
     // Collect all existing or newly uploaded reference URLs for commensurate shortfall synthesis
     const allRefs = [
       ...unraveled.orderedFrames.map((f) => f.dataUrl),
@@ -250,6 +267,8 @@ export const StoryboardDirectorView: React.FC = () => {
     for (let i = 0; i < currentProj.scenes.length; i++) {
       const sc = currentProj.scenes[i];
       const matched = byScene.get(sc.sceneNumber);
+      const guideSc = parsedGuide?.scenes.find((gs) => gs.sceneNumber === sc.sceneNumber);
+
       if (matched) {
         sc.generatedImageUrl = matched.dataUrl;
         if (matched.sceneTitle && !matched.sceneTitle.startsWith('Scene ')) {
@@ -259,6 +278,42 @@ export const StoryboardDirectorView: React.FC = () => {
           sc.exactLyrics = matched.manifestLyrics;
         }
         mappedCount++;
+      }
+
+      if (guideSc) {
+        sc.shortName = guideSc.sceneTitle;
+        sc.imageFilename = guideSc.imageFileName;
+        sc.timeStartSec = guideSc.startTimeSec;
+        sc.timeEndSec = guideSc.endTimeSec;
+        sc.songWindowFormatted = guideSc.songEditWindow;
+        sc.preLyricWindow = guideSc.preLyricWindow;
+        sc.lipSyncWindow = guideSc.lipSyncWindow;
+        sc.postLyricWindow = guideSc.postLyricWindow;
+        sc.barByBarLyrics = guideSc.barByBarLyrics;
+        sc.exactLyrics = guideSc.cleanSungLyrics;
+        sc.primaryOmniPrompt = guideSc.primaryOmniPrompt;
+        sc.actionOnlyOmniPrompt = guideSc.actionOnlyOmniPrompt;
+        sc.activePromptEdition = guideSc.geniusRecommendedEdition;
+        sc.geniusRecommendedEdition = guideSc.geniusRecommendedEdition;
+        sc.geniusSettingCategory = guideSc.geniusSettingCategory;
+        sc.geniusReason = guideSc.geniusReason;
+        sc.syncMode =
+          guideSc.geniusRecommendedEdition === 'ACTION_ONLY_ANIMATE'
+            ? 'NO LIP-SYNC'
+            : 'LIP-SYNC';
+      } else {
+        const genius = classifySceneEditionWithGeniusIntelligence({
+          sceneNumber: sc.sceneNumber,
+          sceneTitle: sc.shortName,
+          imageFileName: sc.imageFilename,
+          cleanSungLyrics: sc.exactLyrics
+        });
+        sc.geniusRecommendedEdition = genius.recommendedEdition;
+        sc.geniusSettingCategory = genius.settingCategory;
+        sc.geniusReason = genius.reason;
+        if (!sc.activePromptEdition) {
+          sc.activePromptEdition = genius.recommendedEdition;
+        }
       }
     }
 
@@ -403,6 +458,131 @@ export const StoryboardDirectorView: React.FC = () => {
     }
   };
 
+  // Apply parsed Omni Classic HTML Guide (or 72.018 BPM preset) directly onto the 20-Scene Board
+  const applyOmniGuideToStoryboardProject = (guide: OmniHtmlGuideParsedProject) => {
+    let currentProj = project;
+    if (!currentProj) {
+      currentProj = generateTwentyScenePlan({
+        songTitle: guide.songTitle,
+        artistName,
+        durationSec: guide.audioDurationSec,
+        lyrics: lyricsText,
+        genderLock,
+        modestyPreset,
+        detectedBpm: guide.primaryGrooveBpm
+      });
+    }
+
+    setSongTitle(guide.songTitle);
+    currentProj.songTitle = guide.songTitle;
+    currentProj.songDna.primaryGrooveBpm = guide.primaryGrooveBpm;
+    currentProj.songDna.audioDurationSec = guide.audioDurationSec;
+    currentProj.songDna.audioDurationFormatted = guide.audioDurationFormatted;
+    setAudioDuration(guide.audioDurationSec);
+
+    let lipCount = 0;
+    let actCount = 0;
+    for (let i = 0; i < currentProj.scenes.length; i++) {
+      const sc = currentProj.scenes[i];
+      const gs = guide.scenes.find((g) => g.sceneNumber === sc.sceneNumber);
+      if (!gs) continue;
+      sc.shortName = gs.sceneTitle;
+      sc.imageFilename = gs.imageFileName;
+      sc.timeStartSec = gs.startTimeSec;
+      sc.timeEndSec = gs.endTimeSec;
+      sc.songWindowFormatted = gs.songEditWindow;
+      sc.preLyricWindow = gs.preLyricWindow;
+      sc.lipSyncWindow = gs.lipSyncWindow;
+      sc.postLyricWindow = gs.postLyricWindow;
+      sc.barByBarLyrics = gs.barByBarLyrics;
+      sc.exactLyrics = gs.cleanSungLyrics;
+      sc.primaryOmniPrompt = gs.primaryOmniPrompt;
+      sc.actionOnlyOmniPrompt = gs.actionOnlyOmniPrompt;
+      sc.activePromptEdition = gs.geniusRecommendedEdition;
+      sc.geniusRecommendedEdition = gs.geniusRecommendedEdition;
+      sc.geniusSettingCategory = gs.geniusSettingCategory;
+      sc.geniusReason = gs.geniusReason;
+      sc.syncMode =
+        gs.geniusRecommendedEdition === 'ACTION_ONLY_ANIMATE' ? 'NO LIP-SYNC' : 'LIP-SYNC';
+      if (gs.geniusRecommendedEdition === 'PRIMARY_LIPSYNC') lipCount++;
+      else actCount++;
+    }
+
+    const extractedLyrics = guide.scenes
+      .filter((s) => s.cleanSungLyrics && !s.cleanSungLyrics.toUpperCase().includes('INSTRUMENTAL'))
+      .map((s) => s.cleanSungLyrics)
+      .join('\n');
+    if (extractedLyrics.trim()) {
+      setLyricsText(extractedLyrics);
+      currentProj.rawLyrics = extractedLyrics;
+    }
+
+    saveStoryboardProject(currentProj);
+    setProject({ ...currentProj });
+    setStatusMessage(
+      `📜 Loaded "${guide.songTitle}" (${guide.primaryGrooveBpm} BPM) Omni HTML Guide: ${lipCount} Lip-Sync scenes + ${actCount} Just-Animate scenes (e.g. Scene 05 Golden Hour Market Handshake → Just Animate / No Lip-Sync)!`
+    );
+  };
+
+  const handleLoadPreset72BpmOmniGuide = () => {
+    const preset = getLordIAmGratefulOmniGuidePreset();
+    applyOmniGuideToStoryboardProject(preset);
+  };
+
+  const handleSwitchSceneEdition = (sceneNumber: number, edition: OmniPromptEdition) => {
+    if (!project) return;
+    const sc = project.scenes.find((s) => s.sceneNumber === sceneNumber);
+    if (!sc) return;
+    sc.activePromptEdition = edition;
+    sc.syncMode = edition === 'ACTION_ONLY_ANIMATE' ? 'NO LIP-SYNC' : 'LIP-SYNC';
+    saveStoryboardProject(project);
+    setProject({ ...project });
+  };
+
+  const handleApplyBulkEditionToBoard = (
+    mode: 'GENIUS_AUTO' | 'ALL_LIPSYNC' | 'ALL_ACTION_ONLY'
+  ) => {
+    if (!project) return;
+    let lipCount = 0;
+    let actCount = 0;
+
+    for (const sc of project.scenes) {
+      if (!sc.geniusRecommendedEdition) {
+        const genius = classifySceneEditionWithGeniusIntelligence({
+          sceneNumber: sc.sceneNumber,
+          sceneTitle: sc.shortName,
+          imageFileName: sc.imageFilename,
+          cleanSungLyrics: sc.exactLyrics
+        });
+        sc.geniusRecommendedEdition = genius.recommendedEdition;
+        sc.geniusSettingCategory = genius.settingCategory;
+        sc.geniusReason = genius.reason;
+      }
+
+      const targetEdition: OmniPromptEdition =
+        mode === 'GENIUS_AUTO'
+          ? sc.geniusRecommendedEdition || 'PRIMARY_LIPSYNC'
+          : mode === 'ALL_LIPSYNC'
+          ? 'PRIMARY_LIPSYNC'
+          : 'ACTION_ONLY_ANIMATE';
+
+      sc.activePromptEdition = targetEdition;
+      sc.syncMode = targetEdition === 'ACTION_ONLY_ANIMATE' ? 'NO LIP-SYNC' : 'LIP-SYNC';
+      if (targetEdition === 'PRIMARY_LIPSYNC') lipCount++;
+      else actCount++;
+    }
+
+    saveStoryboardProject(project);
+    setProject({ ...project });
+    setStatusMessage(
+      mode === 'GENIUS_AUTO'
+        ? `🧠 Genius Contextual Scene Mix Applied: ${lipCount} Lip-Sync scenes & ${actCount} Just-Animate (Action-Only) scenes!`
+        : mode === 'ALL_LIPSYNC'
+        ? `🎤 Switched all ${lipCount} scenes to Primary Lip-Sync Edition.`
+        : `🎬 Switched all ${actCount} scenes to Action-Only (Just Animate / No Lip-Sync) Edition.`
+    );
+  };
+
   const handleLipSyncScene = async (sceneNumber: number) => {
     if (!project) return;
     const scene = project.scenes.find((s) => s.sceneNumber === sceneNumber);
@@ -419,14 +599,19 @@ export const StoryboardDirectorView: React.FC = () => {
 
       const sliceWav = await extractAudioSliceWav(masterAudio, scene.timeStartSec, scene.timeEndSec);
       const selectedModel = scene.selectedModelId || 'ltx-2-5-audio';
+      const activeEdition = scene.activePromptEdition || 'PRIMARY_LIPSYNC';
+      const activePrompt =
+        activeEdition === 'ACTION_ONLY_ANIMATE'
+          ? scene.actionOnlyOmniPrompt
+          : scene.primaryOmniPrompt;
 
       const clip = await generateLipSyncWithModel({
         modelId: selectedModel,
         inputMode: 'image_audio',
         imageSource: scene.generatedImageUrl || null,
         audioSource: sliceWav,
-        prompt: scene.primaryOmniPrompt,
-        exactLyrics: scene.exactLyrics,
+        prompt: activePrompt,
+        exactLyrics: activeEdition === 'ACTION_ONLY_ANIMATE' ? '' : scene.exactLyrics,
         aspectRatio: '16:9',
         resolution: '720p',
         durationSec: Math.min(10, Math.max(2, scene.timeEndSec - scene.timeStartSec)),
@@ -435,7 +620,9 @@ export const StoryboardDirectorView: React.FC = () => {
 
       scene.generatedVideoUrl = clip.videoUrl;
       scene.done = true;
-      setStatusMessage(`Scene ${sceneNumber} lip-sync completed successfully!`);
+      setStatusMessage(
+        `Scene ${sceneNumber} (${activeEdition === 'ACTION_ONLY_ANIMATE' ? 'Just Animate / Action-Only' : 'Lip-Sync'}) completed successfully!`
+      );
     } catch (e: unknown) {
       const err = e as Error;
       console.warn(`[StoryboardDirector] Scene ${sceneNumber} error:`, err);
@@ -840,15 +1027,24 @@ export const StoryboardDirectorView: React.FC = () => {
           <div className="flex items-center gap-2 flex-wrap">
             <label className="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer">
               <FolderArchive className="w-3.5 h-3.5" />
-              <span>Upload ChatGPT ZIPs (`01–10` + `11–20`) or Storyboard Images</span>
+              <span>Upload ChatGPT ZIPs (`01–10` + `11–20`), Images, or Omni `.html` Guide</span>
               <input
                 type="file"
-                accept=".zip,application/zip,application/x-zip-compressed,image/*,.txt"
+                accept=".zip,application/zip,application/x-zip-compressed,image/*,.txt,.html,.htm"
                 multiple
                 onChange={(e) => void handleBulkStoryboardUpload(e, 'AUTO')}
                 className="hidden"
               />
             </label>
+            <button
+              type="button"
+              onClick={handleLoadPreset72BpmOmniGuide}
+              className="px-3.5 py-2 rounded-xl bg-violet-500/15 hover:bg-violet-500/25 text-violet-300 border border-violet-500/30 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
+              title="Load Lord I Am Grateful 72.018 BPM 20-Scene Omni HTML Guide with Genius Lip-Sync vs Just Animate Intelligence"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>📜 Load 72.018 BPM Omni HTML Guide</span>
+            </button>
             <button
               type="button"
               disabled={isSyncingDspLyrics}
@@ -981,6 +1177,48 @@ export const StoryboardDirectorView: React.FC = () => {
       {/* Step 4: 20-Scene Production Console & Grid */}
       {project && (
         <div className="space-y-4">
+          {/* Genius Contextual Scene Intelligence Bar */}
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-violet-950/35 via-indigo-950/25 to-amber-950/20 border border-violet-500/30 flex items-center justify-between flex-wrap gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-violet-500/20 border border-violet-400/30 text-[11px] font-extrabold uppercase tracking-wider text-violet-200">
+                  <BrainCircuit className="w-3.5 h-3.5 text-violet-300" />
+                  <span>Genius Director Intelligence: Lip-Sync vs. Just Animate</span>
+                </span>
+                <span className="text-[11px] text-zinc-300 font-semibold">
+                  {project.scenes.filter((s) => s.syncMode === 'LIP-SYNC').length} Lip-Sync •{' '}
+                  {project.scenes.filter((s) => s.syncMode === 'NO LIP-SYNC').length} Just Animate (Action-Only)
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400">
+                Automatically routes B-roll &amp; social interaction settings (e.g., <strong className="text-amber-300">Market Handshake #05</strong>, Conference Room, Grocery Unpacking, Dinner, Bus) to <strong className="text-amber-300">Action-Only (No Lip-Sync)</strong>, while keeping performance &amp; worship scenes on <strong className="text-cyan-300">Primary Lip-Sync</strong>.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => handleApplyBulkEditionToBoard('GENIUS_AUTO')}
+                className="px-3 py-1.5 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 border border-violet-400/40 text-xs font-bold transition cursor-pointer"
+              >
+                🧠 Apply Genius Scene Mix (Auto)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleApplyBulkEditionToBoard('ALL_LIPSYNC')}
+                className="px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-200 border border-cyan-500/30 text-xs font-semibold transition cursor-pointer"
+              >
+                🎤 All Lip-Sync (Primary)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleApplyBulkEditionToBoard('ALL_ACTION_ONLY')}
+                className="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 border border-amber-500/30 text-xs font-semibold transition cursor-pointer"
+              >
+                🎬 All Just Animate (Action-Only)
+              </button>
+            </div>
+          </div>
+
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-bold text-white">20-Scene Board:</span>
@@ -1032,108 +1270,170 @@ export const StoryboardDirectorView: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {filteredScenes.map((scene) => (
-              <div
-                key={scene.sceneCode}
-                className="p-5 rounded-2xl bg-[#13131b] border border-white/8 space-y-4 hover:border-white/15 transition"
-              >
-                {/* Scene Header */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded-md bg-white/10 text-white font-mono font-bold text-xs">
-                      #{scene.sceneCode}
-                    </span>
-                    <span className="text-sm font-bold text-white">{scene.shortName}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-mono text-zinc-400">{scene.songWindowFormatted}</span>
-                    <span
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
-                        scene.syncMode === 'LIP-SYNC'
-                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                      }`}
-                    >
-                      {scene.syncMode}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Media Preview Box */}
-                <div className="aspect-video bg-black rounded-xl overflow-hidden border border-white/10 relative flex items-center justify-center">
-                  {scene.generatedVideoUrl ? (
-                    <video src={scene.generatedVideoUrl} controls playsInline className="w-full h-full object-contain" />
-                  ) : scene.generatedImageUrl ? (
-                    <img src={scene.generatedImageUrl} alt={scene.shortName} className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="text-center p-4 space-y-1">
-                      <EyeOff className="w-6 h-6 mx-auto text-zinc-600" />
-                      <p className="text-xs text-zinc-500 font-medium">No Keyframe Rendered Yet</p>
-                      <span className="text-[10px] text-zinc-600">ZERO on-screen text rule enforced</span>
+            {filteredScenes.map((scene) => {
+              const activeEdition: OmniPromptEdition =
+                scene.activePromptEdition ||
+                (scene.syncMode === 'NO LIP-SYNC' ? 'ACTION_ONLY_ANIMATE' : 'PRIMARY_LIPSYNC');
+              return (
+                <div
+                  key={scene.sceneCode}
+                  className="p-5 rounded-2xl bg-[#13131b] border border-white/8 space-y-4 hover:border-white/15 transition"
+                >
+                  {/* Scene Header */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded-md bg-white/10 text-white font-mono font-bold text-xs">
+                        #{scene.sceneCode}
+                      </span>
+                      <span className="text-sm font-bold text-white">{scene.shortName}</span>
                     </div>
-                  )}
-
-                  {scene.done && (
-                    <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-emerald-500/90 text-black font-bold text-[10px] flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" />
-                      <span>QC PASS</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-mono text-zinc-400">{scene.songWindowFormatted}</span>
+                      <span
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                          scene.syncMode === 'LIP-SYNC'
+                            ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        }`}
+                      >
+                        {scene.syncMode === 'LIP-SYNC' ? '🎤 LIP-SYNC' : '🎬 JUST ANIMATE'}
+                      </span>
                     </div>
-                  )}
-                </div>
-
-                {/* Lyrics / Narrative Block */}
-                <div className="text-xs space-y-1">
-                  <span className="text-zinc-500 font-semibold block">
-                    {scene.syncMode === 'LIP-SYNC' ? 'Exact Lyric Words to Lip-Sync:' : 'Narrative Arc:'}
-                  </span>
-                  <p className="font-mono text-zinc-200 bg-[#0d0d14] p-2.5 rounded-lg border border-white/5">
-                    {scene.exactLyrics}
-                  </p>
-                </div>
-
-                {/* Actions & Model Chooser */}
-                <div className="pt-2 border-t border-white/5 flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={scene.isGeneratingImage}
-                      onClick={() => handleGenerateSceneImage(scene.sceneNumber)}
-                      className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-semibold text-zinc-200 border border-white/10 transition cursor-pointer disabled:opacity-50"
-                    >
-                      {scene.isGeneratingImage ? 'Generating...' : scene.generatedImageUrl ? 'Regen Image' : 'Generate Image'}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={scene.isGeneratingVideo}
-                      onClick={() => handleLipSyncScene(scene.sceneNumber)}
-                      className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50 flex items-center gap-1"
-                    >
-                      <Video className="w-3 h-3" />
-                      <span>{scene.isGeneratingVideo ? 'Syncing...' : 'Lip-Sync Scene'}</span>
-                    </button>
                   </div>
 
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => handleCopyText(scene.primaryOmniPrompt, `prim_${scene.sceneCode}`)}
-                      className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition cursor-pointer"
-                      title="Copy Primary Omni Prompt"
-                    >
-                      {copiedKey === `prim_${scene.sceneCode}` ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleCopyText(scene.actionOnlyOmniPrompt, `act_${scene.sceneCode}`)}
-                      className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] font-semibold text-zinc-400 hover:text-white transition cursor-pointer"
-                      title="Copy Action-Only Omni Prompt (No singing/dialogue)"
-                    >
-                      Action-Only
-                    </button>
+                  {/* Genius Setting Category & 2-Way Edition Switcher */}
+                  <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 space-y-2">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-violet-300">
+                        🧠 {scene.geniusSettingCategory || 'Contextual Setting'}:{' '}
+                        <span className="text-zinc-300 font-normal">
+                          {scene.geniusReason ||
+                            (scene.syncMode === 'LIP-SYNC'
+                              ? 'Expressive bar-by-bar lip-sync performance'
+                              : 'Action-Only natural acting without singing')}
+                        </span>
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleSwitchSceneEdition(scene.sceneNumber, 'PRIMARY_LIPSYNC')}
+                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition cursor-pointer flex items-center justify-center gap-1 ${
+                          activeEdition === 'PRIMARY_LIPSYNC'
+                            ? 'bg-cyan-500/25 text-cyan-200 border border-cyan-400/50'
+                            : 'bg-white/5 text-zinc-400 hover:text-white border border-white/5'
+                        }`}
+                      >
+                        <span>🎤 Lip-Sync (Primary)</span>
+                        {scene.geniusRecommendedEdition === 'PRIMARY_LIPSYNC' && (
+                          <span className="text-[9px] px-1 rounded bg-cyan-400/20 text-cyan-300">Auto</span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSwitchSceneEdition(scene.sceneNumber, 'ACTION_ONLY_ANIMATE')}
+                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition cursor-pointer flex items-center justify-center gap-1 ${
+                          activeEdition === 'ACTION_ONLY_ANIMATE'
+                            ? 'bg-amber-500/25 text-amber-200 border border-amber-400/50'
+                            : 'bg-white/5 text-zinc-400 hover:text-white border border-white/5'
+                        }`}
+                      >
+                        <span>🎬 Just Animate (Action-Only)</span>
+                        {scene.geniusRecommendedEdition === 'ACTION_ONLY_ANIMATE' && (
+                          <span className="text-[9px] px-1 rounded bg-amber-400/20 text-amber-300">Auto</span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Media Preview Box */}
+                  <div className="aspect-video bg-black rounded-xl overflow-hidden border border-white/10 relative flex items-center justify-center">
+                    {scene.generatedVideoUrl ? (
+                      <video src={scene.generatedVideoUrl} controls playsInline className="w-full h-full object-contain" />
+                    ) : scene.generatedImageUrl ? (
+                      <img src={scene.generatedImageUrl} alt={scene.shortName} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="text-center p-4 space-y-1">
+                        <EyeOff className="w-6 h-6 mx-auto text-zinc-600" />
+                        <p className="text-xs text-zinc-500 font-medium">No Keyframe Rendered Yet</p>
+                        <span className="text-[10px] text-zinc-600">ZERO on-screen text rule enforced</span>
+                      </div>
+                    )}
+
+                    {scene.done && (
+                      <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-emerald-500/90 text-black font-bold text-[10px] flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>QC PASS</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Lyrics / Narrative Block */}
+                  <div className="text-xs space-y-1">
+                    <span className="text-zinc-500 font-semibold block">
+                      {activeEdition === 'PRIMARY_LIPSYNC'
+                        ? 'Exact Lyric Words to Lip-Sync:'
+                        : 'Action-Only Direction (No Singing / Mouth Relaxed):'}
+                    </span>
+                    <p className="font-mono text-zinc-200 bg-[#0d0d14] p-2.5 rounded-lg border border-white/5">
+                      {activeEdition === 'PRIMARY_LIPSYNC'
+                        ? scene.barByBarLyrics || scene.exactLyrics
+                        : `NO SINGING. NO LIP-SYNC. (${scene.exactLyrics})`}
+                    </p>
+                  </div>
+
+                  {/* Actions & Model Chooser */}
+                  <div className="pt-2 border-t border-white/5 flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={scene.isGeneratingImage}
+                        onClick={() => handleGenerateSceneImage(scene.sceneNumber)}
+                        className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-semibold text-zinc-200 border border-white/10 transition cursor-pointer disabled:opacity-50"
+                      >
+                        {scene.isGeneratingImage ? 'Generating...' : scene.generatedImageUrl ? 'Regen Image' : 'Generate Image'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={scene.isGeneratingVideo}
+                        onClick={() => handleLipSyncScene(scene.sceneNumber)}
+                        className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                      >
+                        <Video className="w-3 h-3" />
+                        <span>
+                          {scene.isGeneratingVideo
+                            ? 'Rendering...'
+                            : activeEdition === 'ACTION_ONLY_ANIMATE'
+                            ? 'Animate Scene'
+                            : 'Lip-Sync Scene'}
+                        </span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyText(scene.primaryOmniPrompt, `prim_${scene.sceneCode}`)}
+                        className="px-2 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-[11px] font-semibold text-cyan-300 border border-cyan-500/25 transition cursor-pointer flex items-center gap-1"
+                        title="Copy Primary Omni Prompt (Lip-Sync Version)"
+                      >
+                        {copiedKey === `prim_${scene.sceneCode}` ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        <span>Primary</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyText(scene.actionOnlyOmniPrompt, `act_${scene.sceneCode}`)}
+                        className="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-[11px] font-semibold text-amber-300 border border-amber-500/25 transition cursor-pointer flex items-center gap-1"
+                        title="Copy Action-Only Omni Prompt (Just Animate / No singing)"
+                      >
+                        {copiedKey === `act_${scene.sceneCode}` ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        <span>Action-Only</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

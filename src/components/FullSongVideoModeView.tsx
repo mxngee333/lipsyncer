@@ -11,19 +11,18 @@ import {
   Image as ImageIcon,
   Video,
   CheckCircle2,
-  AlertCircle,
   Loader2,
   Wand2,
   Layers,
   FolderArchive,
   FileText,
-  RefreshCw,
   Trash2,
   Volume2,
   Activity,
   Zap,
-  Sliders,
-  Plus
+  BrainCircuit,
+  Copy,
+  Check
 } from 'lucide-react';
 import {
   AspectRatioOption,
@@ -32,6 +31,8 @@ import {
   FullSongLyricSyncResult,
   FullSongVideoChunk,
   GeneratedLipSyncClip,
+  OmniHtmlGuideParsedProject,
+  OmniPromptEdition,
   UnraveledStoryboardFrame
 } from '../types';
 import { LIPSYNC_MODELS } from '../data/modelCatalog';
@@ -48,11 +49,16 @@ import {
   packageAudioChunksZip,
   packageFullSongProductionZip,
   renderSingleFullSongChunkLipSync,
+  switchChunkPromptEdition,
   syncLyricsWithAudioSignal,
   synthesizeCommensurateSceneFrame,
   unravelStoryboardFilesAndZips,
   upgradeChunkFrameWithAi
 } from '../services/fullSongVideoService';
+import {
+  getLordIAmGratefulOmniGuidePreset,
+  parseOmniNavigatorHtmlGuide
+} from '../services/omniHtmlGuideService';
 import {
   loadStoryboardProject,
   transcribeAudioWithBrowserWhisper
@@ -99,6 +105,15 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
   const [orderedStoryboardFrames, setOrderedStoryboardFrames] = useState<
     UnraveledStoryboardFrame[]
   >([]);
+  const [omniGuide, setOmniGuide] = useState<OmniHtmlGuideParsedProject | null>(() =>
+    getLordIAmGratefulOmniGuidePreset()
+  );
+  const [useGeniusEditionSelection, setUseGeniusEditionSelection] =
+    useState<boolean>(true);
+  const [editionFilter, setEditionFilter] = useState<
+    'ALL' | 'PRIMARY_LIPSYNC' | 'ACTION_ONLY_ANIMATE'
+  >('ALL');
+  const [copiedSceneKey, setCopiedSceneKey] = useState<string>('');
   const [aspectRatio, setAspectRatio] = useState<AspectRatioOption>('16:9');
   const [selectedModelId, setSelectedModelId] = useState<string>('lipsyncer-dsp-60fps');
 
@@ -171,6 +186,8 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
       audioOverride?: Blob | File;
       imagesOverride?: string[];
       framesOverride?: UnraveledStoryboardFrame[];
+      omniGuideOverride?: OmniHtmlGuideParsedProject | null;
+      useGeniusOverride?: boolean;
       lyricsOverride?: string;
       songTitleOverride?: string;
       modeOverride?: FullSongChunkMode;
@@ -183,10 +200,18 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
       const activeImages =
         opts?.imagesOverride ??
         (activeFrames.length > 0 ? activeFrames.map((f) => f.dataUrl) : uploadedImageUrls);
+      const activeOmniGuide =
+        opts?.omniGuideOverride !== undefined ? opts.omniGuideOverride : omniGuide;
+      const activeUseGenius =
+        opts?.useGeniusOverride !== undefined
+          ? opts.useGeniusOverride
+          : useGeniusEditionSelection;
       const activeLyrics = opts?.lyricsOverride ?? rawLyrics;
-      const activeSongTitle = opts?.songTitleOverride ?? songTitle;
+      const activeSongTitle =
+        opts?.songTitleOverride ?? activeOmniGuide?.songTitle ?? songTitle;
       const activeMode = opts?.modeOverride ?? chunkMode;
-      const activeSceneCount = opts?.sceneCountOverride ?? targetSceneCount;
+      const activeSceneCount =
+        opts?.sceneCountOverride ?? activeOmniGuide?.scenes.length ?? targetSceneCount;
       const fixedSec = Math.max(2, intervalMinutes * 60 + intervalSeconds);
 
       setIsBuildingChunks(true);
@@ -197,6 +222,8 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
           rawLyrics: activeLyrics,
           uploadedImageUrls: activeImages,
           orderedStoryboardFrames: activeFrames.length > 0 ? activeFrames : undefined,
+          omniGuide: activeOmniGuide,
+          useGeniusEditionSelection: activeUseGenius,
           chunkMode: activeMode,
           fixedIntervalSec: fixedSec,
           targetSceneCount: activeSceneCount,
@@ -216,13 +243,13 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
         setLyricSyncResult(built.lyricSync);
         setShortfallFilledCount(built.shortfallFilledCount);
 
-        const shortfallNote =
-          built.shortfallFilledCount > 0
-            ? ` (${built.shortfallFilledCount} missing storyboard frames synthesized on-the-fly to commensurate all ${built.chunks.length} chunks!)`
-            : ` (All ${built.chunks.length} chunks paired in exact 01→${built.chunks.length} order!)`;
+        const lipSyncCount = built.chunks.filter(
+          (c) => c.activePromptEdition === 'PRIMARY_LIPSYNC'
+        ).length;
+        const animateOnlyCount = built.chunks.length - lipSyncCount;
 
         setStatusBanner({
-          message: `Synced ${built.chunks.length} audio chunks at ${built.analysis.feltGrooveBpm} BPM${shortfallNote}`,
+          message: `Synced ${built.chunks.length} scenes at ${built.analysis.feltGrooveBpm} BPM • 🧠 Genius Mix: ${lipSyncCount} Lip-Sync (Primary) + ${animateOnlyCount} Just Animate (Action-Only)!`,
           percent: 100,
           variant: 'success'
         });
@@ -245,12 +272,14 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
       chunkMode,
       intervalMinutes,
       intervalSeconds,
+      omniGuide,
       orderedStoryboardFrames,
       rawLyrics,
       selectedModelId,
       songTitle,
       targetSceneCount,
-      uploadedImageUrls
+      uploadedImageUrls,
+      useGeniusEditionSelection
     ]
   );
 
@@ -259,20 +288,29 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
     let mounted = true;
     const initDemo = async () => {
       try {
+        const presetGuide = getLordIAmGratefulOmniGuidePreset();
         const demoSongBlob = await generateDemoVocalWavBlob(
-          'Every word comes alive in studio cinema light rising higher tonight',
-          40
+          'Lord I am grateful for a refreshing day so many reasons I can smile today thank you',
+          164
         );
         if (!mounted) return;
         const url = URL.createObjectURL(demoSongBlob);
         setAudioFile(demoSongBlob);
-        setAudioFileName('Golden_Horizon_Full_Song_Master.wav');
+        setAudioFileName('Lord_I_Am_Grateful_Master_72.018BPM.wav');
         setAudioPreviewUrl(url);
+        setSongTitle(presetGuide.songTitle);
+        setOmniGuide(presetGuide);
 
-        // Create 14 uploaded storyboard images for a 20-scene song so the user immediately sees
-        // the 6 missing scenes auto-created on-the-fly to commensurate the 20 chunks!
-        const p1 = generateDemoPortraitDataUrl('singer_female');
-        const p2 = generateDemoPortraitDataUrl('host_male');
+        const guideLyrics = presetGuide.scenes
+          .map((s) => s.cleanSungLyrics)
+          .filter((l) => !/NONE/i.test(l))
+          .join('\n');
+        setRawLyrics(guideLyrics);
+
+        // Create 14 uploaded storyboard images for the 20-scene song so the user immediately sees
+        // the 6 missing scenes auto-created on-the-fly to commensurate all 20 chunks!
+        const p1 = generateDemoPortraitDataUrl('host_male');
+        const p2 = generateDemoPortraitDataUrl('singer_female');
         const p3 = generateDemoPortraitDataUrl('cyber_diva');
         const initial14Images = Array.from({ length: 14 }, (_, idx) =>
           idx % 3 === 0 ? p1 : idx % 3 === 1 ? p2 : p3
@@ -282,7 +320,10 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
         await executeChunkAndFramePipeline({
           audioOverride: demoSongBlob,
           imagesOverride: initial14Images,
-          lyricsOverride: DEFAULT_FULL_SONG_LYRICS,
+          omniGuideOverride: presetGuide,
+          useGeniusOverride: true,
+          songTitleOverride: presetGuide.songTitle,
+          lyricsOverride: guideLyrics,
           modeOverride: 'target_scene_count',
           sceneCountOverride: 20
         });
@@ -315,7 +356,7 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
     await executeChunkAndFramePipeline({ audioOverride: file });
   };
 
-  // Handle ChatGPT 2-ZIP (Folder A 01–10 + Folder B 11–20) or Multi-Image Storyboard Upload
+  // Handle ChatGPT 2-ZIP (Folder A 01–10 + Folder B 11–20), Omni HTML Guide, or Multi-Image Storyboard Upload
   const processStoryboardFiles = async (
     fileArray: File[],
     forcedBatch: 'A' | 'B' | 'AUTO' = 'AUTO'
@@ -333,6 +374,7 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
       const unraveled = await unravelStoryboardFilesAndZips({
         files: fileArray,
         existingFrames: orderedStoryboardFrames,
+        existingOmniGuide: omniGuide || undefined,
         forcedBatch,
         targetTotal: targetSceneCount,
         onProgress: (msg) => {
@@ -342,8 +384,15 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
 
       const nextFrames = unraveled.orderedFrames;
       const nextUrls = nextFrames.map((f) => f.dataUrl);
-      setOrderedStoryboardFrames(nextFrames);
-      setUploadedImageUrls(nextUrls);
+      const nextOmniGuide = unraveled.parsedOmniGuide || omniGuide;
+
+      if (unraveled.parsedOmniGuide) {
+        setOmniGuide(unraveled.parsedOmniGuide);
+      }
+      if (nextFrames.length > 0) {
+        setOrderedStoryboardFrames(nextFrames);
+        setUploadedImageUrls(nextUrls);
+      }
 
       let nextSongTitle = songTitle;
       if (unraveled.detectedSongTitle) {
@@ -358,14 +407,15 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
       }
 
       await executeChunkAndFramePipeline({
-        imagesOverride: nextUrls,
-        framesOverride: nextFrames,
+        imagesOverride: nextFrames.length > 0 ? nextUrls : uploadedImageUrls,
+        framesOverride: nextFrames.length > 0 ? nextFrames : orderedStoryboardFrames,
+        omniGuideOverride: nextOmniGuide,
         songTitleOverride: nextSongTitle,
         lyricsOverride: nextLyrics
       });
 
       setStatusBanner({
-        message: `Unraveled & sorted ${nextFrames.length} storyboard frames in canonical 01→20 order (Set A 01–10: ${unraveled.folderACount}/10 • Set B 11–20: ${unraveled.folderBCount}/10)!`,
+        message: `Unraveled & sorted ${nextFrames.length} storyboard frames in canonical 01→20 order (Set A 01–10: ${unraveled.folderACount}/10 • Set B 11–20: ${unraveled.folderBCount}/10)${nextOmniGuide ? ` + Omni HTML Guide (${nextOmniGuide.primaryGrooveBpm} BPM)` : ''}!`,
         percent: 100,
         variant: 'success'
       });
@@ -379,6 +429,159 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
         variant: 'warning'
       });
     }
+  };
+
+  // Dedicated Omni Classic HTML Guide (.html / .txt) Upload Handler
+  const handleOmniHtmlGuideUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    try {
+      const rawHtml = await file.text();
+      const parsed = parseOmniNavigatorHtmlGuide(rawHtml);
+      if (!parsed || parsed.scenes.length === 0) {
+        setStatusBanner({
+          message:
+            'Could not find 20-scene Omni blocks in that file. Loaded canonical "Lord I Am Grateful" 72.018 BPM HTML Guide instead!',
+          percent: 100,
+          variant: 'warning'
+        });
+        return;
+      }
+
+      setOmniGuide(parsed);
+      setSongTitle(parsed.songTitle);
+      setTargetSceneCount(parsed.scenes.length);
+      setUseGeniusEditionSelection(true);
+
+      const guideLyrics = parsed.scenes
+        .map((s) => s.cleanSungLyrics)
+        .filter((l) => !/NONE/i.test(l))
+        .join('\n');
+      if (guideLyrics) {
+        setRawLyrics(guideLyrics);
+      }
+
+      await executeChunkAndFramePipeline({
+        omniGuideOverride: parsed,
+        useGeniusOverride: true,
+        songTitleOverride: parsed.songTitle,
+        lyricsOverride: guideLyrics || rawLyrics,
+        sceneCountOverride: parsed.scenes.length
+      });
+
+      const lipCount = parsed.scenes.filter(
+        (s) => s.geniusRecommendedEdition === 'PRIMARY_LIPSYNC'
+      ).length;
+      const animCount = parsed.scenes.length - lipCount;
+
+      setStatusBanner({
+        message: `📜 Loaded Omni HTML Guide "${parsed.songTitle}" (${parsed.primaryGrooveBpm} BPM, ${parsed.scenes.length} scenes) • 🧠 Genius Intelligence auto-selected ${lipCount} Lip-Sync (Primary) & ${animCount} Just Animate (Action-Only) scenes!`,
+        percent: 100,
+        variant: 'success'
+      });
+    } catch (err: unknown) {
+      setStatusBanner({
+        message:
+          err instanceof Error ? err.message : 'Error reading Omni HTML Guide file.',
+        percent: 0,
+        variant: 'warning'
+      });
+    }
+  };
+
+  const handleLoadLordIAmGratefulPreset = async () => {
+    const preset = getLordIAmGratefulOmniGuidePreset();
+    setOmniGuide(preset);
+    setSongTitle(preset.songTitle);
+    setTargetSceneCount(preset.scenes.length);
+    setUseGeniusEditionSelection(true);
+
+    const guideLyrics = preset.scenes
+      .map((s) => s.cleanSungLyrics)
+      .filter((l) => !/NONE/i.test(l))
+      .join('\n');
+    setRawLyrics(guideLyrics);
+
+    await executeChunkAndFramePipeline({
+      omniGuideOverride: preset,
+      useGeniusOverride: true,
+      songTitleOverride: preset.songTitle,
+      lyricsOverride: guideLyrics,
+      sceneCountOverride: preset.scenes.length
+    });
+  };
+
+  // Switch a single chunk between Lip-Sync (Primary) and Just Animate (Action-Only)
+  const handleSwitchSingleChunkEdition = (
+    chunkIndex: number,
+    edition: OmniPromptEdition
+  ) => {
+    setMergedMasterClip(null);
+    setChunks((prev) =>
+      prev.map((c) =>
+        c.chunkIndex === chunkIndex ? switchChunkPromptEdition(c, edition) : c
+      )
+    );
+  };
+
+  // Apply Genius Contextual Scene Intelligence across all 20 chunks
+  const handleApplyGeniusMixToAllChunks = () => {
+    setMergedMasterClip(null);
+    setUseGeniusEditionSelection(true);
+    setChunks((prev) =>
+      prev.map((c) =>
+        switchChunkPromptEdition(
+          c,
+          c.geniusRecommendedEdition || 'PRIMARY_LIPSYNC'
+        )
+      )
+    );
+    const lipCount = chunks.filter(
+      (c) => (c.geniusRecommendedEdition || 'PRIMARY_LIPSYNC') === 'PRIMARY_LIPSYNC'
+    ).length;
+    const animCount = chunks.length - lipCount;
+    setStatusBanner({
+      message: `🧠 Genius Contextual Scene Intelligence Applied: ${lipCount} Performance/Worship scenes set to Lip-Sync (Primary) • ${animCount} Market/Office/Domestic/Bus scenes set to Just Animate (Action-Only)!`,
+      percent: 100,
+      variant: 'success'
+    });
+  };
+
+  // Switch all chunks to Primary Lip-Sync or All Just Animate
+  const handleSwitchAllChunksToEdition = (edition: OmniPromptEdition) => {
+    setMergedMasterClip(null);
+    setUseGeniusEditionSelection(false);
+    setChunks((prev) =>
+      prev.map((c) => {
+        // Scene 01 intro is explicitly instrumental in the guide
+        if (
+          edition === 'PRIMARY_LIPSYNC' &&
+          c.chunkIndex === 1 &&
+          /NONE/i.test(c.syncedLyrics)
+        ) {
+          return switchChunkPromptEdition(c, 'ACTION_ONLY_ANIMATE');
+        }
+        return switchChunkPromptEdition(c, edition);
+      })
+    );
+    setStatusBanner({
+      message:
+        edition === 'PRIMARY_LIPSYNC'
+          ? '🎤 Switched all singing scenes to Primary Omni Prompt (Bar-by-Bar Lip-Sync Version).'
+          : '🎬 Switched all 20 scenes to Action-Only Omni Prompt (Just Animate / No Lip-Sync Version).',
+      percent: 100,
+      variant: 'info'
+    });
+  };
+
+  const handleCopyPromptText = (text: string, key: string) => {
+    void navigator.clipboard.writeText(text);
+    setCopiedSceneKey(key);
+    setTimeout(() => setCopiedSceneKey(''), 1800);
   };
 
   const handleStoryboardImagesUpload = async (
@@ -1332,7 +1535,7 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
               </button>
             </div>
 
-            {/* Unified Multi-ZIP + Multi-Image Dropzone */}
+            {/* Unified Multi-ZIP + Multi-Image + Omni HTML Guide Dropzone */}
             <label
               onDragOver={(e) => {
                 e.preventDefault();
@@ -1349,7 +1552,7 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
             >
               <input
                 type="file"
-                accept=".zip,application/zip,application/x-zip-compressed,image/*,.txt"
+                accept=".zip,application/zip,application/x-zip-compressed,image/*,.txt,.html,.htm"
                 multiple
                 onChange={(e) => void handleStoryboardImagesUpload(e, 'AUTO')}
                 className="hidden"
@@ -1357,29 +1560,29 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
               <div className="flex flex-col items-center gap-1.5">
                 <FolderArchive className="w-6 h-6 text-amber-400" />
                 <span className="text-xs font-bold text-white">
-                  Drop or Select ChatGPT ZIPs (`Folder_A_01_10.zip` + `Folder_B_11_20.zip`) or Images 01–20
+                  Drop ChatGPT ZIPs (`Folder_A_01_10.zip` + `Folder_B_11_20.zip`) + Omni HTML Guide (`.html`)
                 </span>
                 <span className="text-[11px] text-zinc-400">
-                  Select both ZIPs at once (in any order!) or upload one after the other — automatically unzips &amp; sorts #01 → #20!
+                  Unzips &amp; orders #01 → #20 AND extracts both Lip-Sync (Primary) &amp; Just Animate (Action-Only) prompts!
                 </span>
               </div>
             </label>
 
-            {/* Dedicated Folder A (01–10) & Folder B (11–20) Quick Slot Uploaders */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {/* Dedicated Folder A (01–10), Folder B (11–20) & Omni Classic HTML Guide Uploaders */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <label className="p-2.5 rounded-xl bg-cyan-950/30 hover:bg-cyan-950/50 border border-cyan-500/30 flex items-center justify-between gap-2 cursor-pointer transition">
                 <div className="flex items-center gap-2 min-w-0">
                   <FolderArchive className="w-4 h-4 text-cyan-400 shrink-0" />
                   <div className="truncate">
                     <span className="text-xs font-bold text-cyan-200 block">
-                      Set A: Scenes 01–10
+                      Set A: 01–10
                     </span>
                     <span className="text-[10px] text-zinc-400 block truncate">
-                      Upload `Folder_A_Images_01_10.zip`
+                      `Folder_A_01_10.zip`
                     </span>
                   </div>
                 </div>
-                <span className="px-2 py-0.5 rounded-md bg-cyan-500/20 border border-cyan-500/30 text-[10px] font-mono font-bold text-cyan-300 shrink-0">
+                <span className="px-1.5 py-0.5 rounded-md bg-cyan-500/20 border border-cyan-500/30 text-[10px] font-mono font-bold text-cyan-300 shrink-0">
                   {setACount}/10
                 </span>
                 <input
@@ -1396,14 +1599,14 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
                   <FolderArchive className="w-4 h-4 text-fuchsia-400 shrink-0" />
                   <div className="truncate">
                     <span className="text-xs font-bold text-fuchsia-200 block">
-                      Set B: Scenes 11–20
+                      Set B: 11–20
                     </span>
                     <span className="text-[10px] text-zinc-400 block truncate">
-                      Upload `Folder_B_Images_11_20.zip`
+                      `Folder_B_11_20.zip`
                     </span>
                   </div>
                 </div>
-                <span className="px-2 py-0.5 rounded-md bg-fuchsia-500/20 border border-fuchsia-500/30 text-[10px] font-mono font-bold text-fuchsia-300 shrink-0">
+                <span className="px-1.5 py-0.5 rounded-md bg-fuchsia-500/20 border border-fuchsia-500/30 text-[10px] font-mono font-bold text-fuchsia-300 shrink-0">
                   {setBCount}/10
                 </span>
                 <input
@@ -1411,6 +1614,29 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
                   accept=".zip,application/zip,application/x-zip-compressed,image/*"
                   multiple
                   onChange={(e) => void handleStoryboardImagesUpload(e, 'B')}
+                  className="hidden"
+                />
+              </label>
+
+              <label className="p-2.5 rounded-xl bg-emerald-950/30 hover:bg-emerald-950/50 border border-emerald-500/30 flex items-center justify-between gap-2 cursor-pointer transition">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FileText className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <div className="truncate">
+                    <span className="text-xs font-bold text-emerald-200 block">
+                      Omni HTML Guide
+                    </span>
+                    <span className="text-[10px] text-zinc-400 block truncate">
+                      {omniGuide ? `${omniGuide.songTitle} (${omniGuide.primaryGrooveBpm} BPM)` : 'Upload .html guide'}
+                    </span>
+                  </div>
+                </div>
+                <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-500/30 text-[10px] font-mono font-bold text-emerald-300 shrink-0">
+                  {omniGuide ? `${omniGuide.scenes.length}sc` : '.HTML'}
+                </span>
+                <input
+                  type="file"
+                  accept=".html,.htm,.txt"
+                  onChange={(e) => void handleOmniHtmlGuideUpload(e)}
                   className="hidden"
                 />
               </label>
@@ -1851,6 +2077,137 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
       </div>
 
       {/* ===================================================================== */}
+      {/* STEP 4.5: 🧠 GENIUS CONTEXTUAL SCENE INTELLIGENCE & OMNI HTML GUIDE    */}
+      {/* ===================================================================== */}
+      <div className="p-6 rounded-3xl bg-gradient-to-br from-amber-950/35 via-[#13131f] to-[#0c0c15] border border-amber-500/35 space-y-4 shadow-xl">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/35 text-[11px] font-bold text-amber-300">
+              <BrainCircuit className="w-3.5 h-3.5" />
+              <span>
+                OMNI CLASSIC HTML GUIDE ADD-ON • 2-WAY SCENE INTELLIGENCE (LIP-SYNC vs JUST ANIMATE)
+              </span>
+            </div>
+            <h2 className="text-lg sm:text-xl font-extrabold text-white">
+              🧠 Genius Director Intelligence: When to Lip-Sync vs When to Just Animate (Action-Only)
+            </h2>
+            <p className="text-xs text-zinc-300 max-w-4xl leading-relaxed">
+              Every scene in your Omni Classic HTML Guide (`{omniGuide?.songTitle || songTitle}` •{' '}
+              <span className="text-amber-300 font-mono font-bold">
+                {omniGuide?.primaryGrooveBpm || analysis?.feltGrooveBpm || 72.018} BPM
+              </span>
+              ) has <strong>two prompt editions</strong>: <strong>🎤 Primary (Bar-by-Bar Lip-Sync)</strong> and{' '}
+              <strong>🎬 Action-Only (Just Animate / No Lip-Sync)</strong>. In real-life interaction settings — such as{' '}
+              <span className="text-amber-200 font-semibold">
+                Scene #05 Market Handshake (`05_Golden_Hour_Market_Handshake.png`), Conference Room (#03), Office Break (#04), Grocery Unpacking (#06), School Backpack (#07), Family Dinner (#08), City Bus (#12), Office Mentorship (#13), Doorstep Gift (#14), Meal Distribution (#15), and Candlelit Prayer (#18)
+              </span>{' '}
+              — singing mid-handshake or while unpacking groceries feels unnatural, so our Genius Intelligence automatically selects the <strong>🎬 Just Animate (Action-Only)</strong> edition while keeping Worship, Walk, Rooftop, Porch, Band, and Celebration scenes on <strong>🎤 Lip-Sync (Primary)</strong>!
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap shrink-0">
+            <button
+              type="button"
+              onClick={handleApplyGeniusMixToAllChunks}
+              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 border transition cursor-pointer ${
+                useGeniusEditionSelection
+                  ? 'bg-gradient-to-r from-amber-500 to-emerald-500 text-black border-amber-300 shadow-lg shadow-amber-500/20'
+                  : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 border-amber-500/35'
+              }`}
+            >
+              <BrainCircuit className="w-4 h-4" />
+              <span>🧠 Apply Genius Scene Mix (Auto)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSwitchAllChunksToEdition('PRIMARY_LIPSYNC')}
+              className="px-3.5 py-2.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-200 border border-cyan-500/30 text-xs font-bold transition cursor-pointer"
+            >
+              🎤 All Lip-Sync (Primary)
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSwitchAllChunksToEdition('ACTION_ONLY_ANIMATE')}
+              className="px-3.5 py-2.5 rounded-xl bg-fuchsia-500/15 hover:bg-fuchsia-500/25 text-fuchsia-200 border border-fuchsia-500/30 text-xs font-bold transition cursor-pointer"
+            >
+              🎬 All Just Animate (Action-Only)
+            </button>
+
+            <label className="px-3.5 py-2.5 rounded-xl bg-white/8 hover:bg-white/15 text-white border border-white/15 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition">
+              <Upload className="w-3.5 h-3.5 text-amber-400" />
+              <span>Upload Omni .HTML Guide</span>
+              <input
+                type="file"
+                accept=".html,.htm,.txt"
+                onChange={(e) => void handleOmniHtmlGuideUpload(e)}
+                className="hidden"
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={() => void handleLoadLordIAmGratefulPreset()}
+              className="px-3 py-2.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition cursor-pointer"
+              title="Reload canonical 20-scene Lord I Am Grateful (72.018 BPM) Omni HTML Guide"
+            >
+              📜 Load 72.018 BPM Guide
+            </button>
+          </div>
+        </div>
+
+        {/* Genius Summary Pills & Filter Tabs */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-white/10">
+          <div className="flex items-center gap-2 flex-wrap text-xs">
+            <span className="px-3 py-1 rounded-lg bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-bold">
+              🎤 Lip-Sync (Primary) Active:{' '}
+              {chunks.filter((c) => c.syncMode === 'LIP-SYNC').length} Scenes
+            </span>
+            <span className="px-3 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold">
+              🎬 Just Animate (Action-Only) Active:{' '}
+              {chunks.filter((c) => c.syncMode !== 'LIP-SYNC').length} Scenes
+            </span>
+            <span className="px-3 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-mono text-[11px]">
+              Scene #05 Market Handshake:{' '}
+              {chunks.find((c) => c.chunkIndex === 5)?.syncMode === 'LIP-SYNC'
+                ? '🎤 Lip-Sync'
+                : '🎬 Just Animate (Action-Only 05A)'}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5 bg-[#0a0a12] p-1 rounded-xl border border-white/10">
+            {(
+              [
+                { id: 'ALL', label: `All Scenes (${chunks.length})` },
+                {
+                  id: 'PRIMARY_LIPSYNC',
+                  label: `🎤 Lip-Sync (${chunks.filter((c) => c.syncMode === 'LIP-SYNC').length})`
+                },
+                {
+                  id: 'ACTION_ONLY_ANIMATE',
+                  label: `🎬 Just Animate (${chunks.filter((c) => c.syncMode !== 'LIP-SYNC').length})`
+                }
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setEditionFilter(tab.id)}
+                className={`px-3 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                  editionFilter === tab.id
+                    ? 'bg-amber-500 text-black'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ===================================================================== */}
       {/* STEP 5: CHUNK-BY-CHUNK STORYBOARD & COMMENSURATE FRAME TIMELINE GRID   */}
       {/* ===================================================================== */}
       <div className="space-y-4">
@@ -1859,144 +2216,288 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
             <h2 className="text-lg font-extrabold text-white flex items-center gap-2">
               <Layers className="w-5 h-5 text-violet-400" />
               <span>
-                Synchronized Audio Chunks &amp; Storyboard Frame Rack ({chunks.length} Chunks)
+                Synchronized Audio Chunks, 2-Way Omni Prompts &amp; Storyboard Rack ({chunks.length} Scenes)
               </span>
             </h2>
             <p className="text-xs text-zinc-400">
-              Inspect every chunk&apos;s audio slice, synced lyrics, and visual frame. Swap any image or synthesize a new commensurate frame on the fly.
+              Toggle any scene between <strong>🎤 Lip-Sync (Primary)</strong> and <strong>🎬 Just Animate (Action-Only)</strong>, copy either Omni prompt with 1 click, or swap/synthesize frames on the fly.
             </p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {chunks.map((chunk) => {
-            const isPlayingAudio = playingChunkIdx === chunk.chunkIndex;
-            const isCommensurate = chunk.frameSourceType === 'commensurate_synthesized';
+          {chunks
+            .filter((chunk) => {
+              if (editionFilter === 'PRIMARY_LIPSYNC') {
+                return chunk.syncMode === 'LIP-SYNC';
+              }
+              if (editionFilter === 'ACTION_ONLY_ANIMATE') {
+                return chunk.syncMode !== 'LIP-SYNC';
+              }
+              return true;
+            })
+            .map((chunk) => {
+              const isPlayingAudio = playingChunkIdx === chunk.chunkIndex;
+              const isCommensurate = chunk.frameSourceType === 'commensurate_synthesized';
+              const isLipSyncActive = chunk.syncMode === 'LIP-SYNC';
+              const isGeniusAnimateRecommended =
+                chunk.geniusRecommendedEdition === 'ACTION_ONLY_ANIMATE';
 
-            return (
-              <div
-                key={chunk.chunkIndex}
-                className={`p-4 rounded-2xl bg-[#13131d] border transition space-y-3 flex flex-col justify-between ${
-                  isCommensurate
-                    ? 'border-amber-500/30 hover:border-amber-500/50'
-                    : 'border-white/8 hover:border-white/20'
-                }`}
-              >
-                <div className="space-y-3">
-                  {/* Top Bar: Chunk Code, Time Window, Sync Mode */}
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5">
-                      <span className="px-2 py-0.5 rounded-md bg-white/10 text-white font-mono font-bold text-xs">
-                        #{chunk.chunkCode}
-                      </span>
-                      <span className="text-[11px] font-mono text-zinc-400">
-                        {chunk.timeWindowFormatted} ({chunk.durationSec}s)
+              return (
+                <div
+                  key={chunk.chunkIndex}
+                  className={`p-4 rounded-2xl bg-[#13131d] border transition space-y-3 flex flex-col justify-between ${
+                    isCommensurate
+                      ? 'border-amber-500/30 hover:border-amber-500/50'
+                      : 'border-white/8 hover:border-white/20'
+                  }`}
+                >
+                  <div className="space-y-3">
+                    {/* Top Bar: Chunk Code, Time Window, Active Mode Badge */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="px-2 py-0.5 rounded-md bg-white/10 text-white font-mono font-bold text-xs shrink-0">
+                          #{chunk.chunkCode}
+                        </span>
+                        <span className="text-[11px] font-mono text-zinc-400 truncate">
+                          {chunk.timeWindowFormatted} ({chunk.durationSec}s)
+                        </span>
+                      </div>
+
+                      <span
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase shrink-0 ${
+                          isLipSyncActive
+                            ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        }`}
+                      >
+                        {isLipSyncActive ? '🎤 LIP-SYNC' : '🎬 JUST ANIMATE'}
                       </span>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setChunks((prev) =>
-                          prev.map((c) =>
-                            c.chunkIndex === chunk.chunkIndex
-                              ? {
-                                  ...c,
-                                  syncMode:
-                                    c.syncMode === 'LIP-SYNC'
-                                      ? 'CINEMATIC-MOTION'
-                                      : 'LIP-SYNC'
-                                }
-                              : c
-                          )
-                        );
-                      }}
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase cursor-pointer ${
-                        chunk.syncMode === 'LIP-SYNC'
-                          ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                      }`}
-                      title="Click to toggle between LIP-SYNC and CINEMATIC MOTION"
-                    >
-                      {chunk.syncMode}
-                    </button>
-                  </div>
-
-                  {/* Visual Frame / Rendered Chunk Video Viewport */}
-                  <div className="relative aspect-video bg-black rounded-xl overflow-hidden border border-white/10 group">
-                    {chunk.generatedVideoUrl ? (
-                      <video
-                        src={chunk.generatedVideoUrl}
-                        controls
-                        loop
-                        playsInline
-                        className="w-full h-full object-cover"
-                      />
-                    ) : chunk.imageSourceUrl ? (
-                      <img
-                        src={chunk.imageSourceUrl}
-                        alt={chunk.commensurateSceneLabel}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : null}
-
-                    {/* Frame Source Badge */}
-                    <div
-                      className={`absolute top-2 left-2 px-2 py-0.5 rounded-md text-[10px] font-bold backdrop-blur-md border ${
-                        chunk.frameSourceType === 'uploaded'
-                          ? 'bg-emerald-950/85 text-emerald-300 border-emerald-500/40'
-                          : chunk.frameSourceType === 'ai_cloud_generated'
-                            ? 'bg-cyan-950/85 text-cyan-300 border-cyan-500/40'
-                            : 'bg-amber-950/85 text-amber-300 border-amber-500/40'
-                      }`}
-                    >
-                      {chunk.frameSourceType === 'uploaded'
-                        ? '📸 Uploaded Storyboard'
-                        : chunk.frameSourceType === 'ai_cloud_generated'
-                          ? '🎨 AI Cloud Frame'
-                          : '✨ On-The-Fly Commensurate Frame'}
-                    </div>
-
-                    {/* Play Audio Chunk Slice Button */}
-                    <button
-                      type="button"
-                      onClick={() => togglePlayChunkAudio(chunk)}
-                      className="absolute bottom-2 right-2 px-2.5 py-1 rounded-lg bg-black/80 hover:bg-black text-white text-[10px] font-semibold border border-white/15 flex items-center gap-1 cursor-pointer"
-                    >
-                      {isPlayingAudio ? (
-                        <Pause className="w-3 h-3 text-cyan-400" />
-                      ) : (
-                        <Play className="w-3 h-3 text-cyan-400" />
+                    {/* Scene Title & Genius Contextual Recommendation Pill */}
+                    <div className="p-2.5 rounded-xl bg-[#0b0b13] border border-white/8 space-y-1.5">
+                      <div className="flex items-center justify-between gap-1.5">
+                        <span className="text-xs font-bold text-white truncate">
+                          {chunk.commensurateSceneLabel}
+                        </span>
+                        {chunk.geniusSettingCategory && (
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 ${
+                              isGeniusAnimateRecommended
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                            }`}
+                          >
+                            🧠 {chunk.geniusSettingCategory}
+                          </span>
+                        )}
+                      </div>
+                      {chunk.geniusReason && (
+                        <p className="text-[10px] text-zinc-400 leading-snug">
+                          {chunk.geniusReason}
+                        </p>
                       )}
-                      <span>{isPlayingAudio ? 'Stop Slice' : 'Play Audio Slice'}</span>
-                    </button>
-                  </div>
-
-                  {/* Synced Lyric Line Editor & Vocal DSP Meter */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-[10px] text-zinc-400">
-                      <span>Synced Lyric / Vocal Cue:</span>
-                      <span className="font-mono text-cyan-300">
-                        Vocal Energy: {Math.round(chunk.vocalEnergyScore * 100)}%
-                      </span>
                     </div>
-                    <input
-                      type="text"
-                      value={chunk.syncedLyrics}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setChunks((prev) =>
-                          prev.map((c) =>
-                            c.chunkIndex === chunk.chunkIndex
-                              ? { ...c, syncedLyrics: val }
-                              : c
+
+                    {/* 2-Way Edition Switcher: Lip-Sync (Primary) vs Just Animate (Action-Only) */}
+                    <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-[#090910] border border-white/10">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleSwitchSingleChunkEdition(
+                            chunk.chunkIndex,
+                            'PRIMARY_LIPSYNC'
                           )
-                        );
-                      }}
-                      className="w-full bg-[#0b0b12] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 font-mono focus:outline-none focus:border-cyan-500"
-                    />
+                        }
+                        className={`py-1.5 px-2 rounded-lg text-[10px] font-extrabold transition flex items-center justify-center gap-1 cursor-pointer ${
+                          isLipSyncActive
+                            ? 'bg-cyan-500 text-black shadow'
+                            : 'text-zinc-400 hover:text-white'
+                        }`}
+                        title="Use Primary Omni Prompt (Bar-by-Bar Lip-Sync Singing Version)"
+                      >
+                        <span>🎤 Lip-Sync (Primary)</span>
+                        {chunk.geniusRecommendedEdition === 'PRIMARY_LIPSYNC' && (
+                          <span className="text-[9px] px-1 rounded bg-black/25">🧠</span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleSwitchSingleChunkEdition(
+                            chunk.chunkIndex,
+                            'ACTION_ONLY_ANIMATE'
+                          )
+                        }
+                        className={`py-1.5 px-2 rounded-lg text-[10px] font-extrabold transition flex items-center justify-center gap-1 cursor-pointer ${
+                          !isLipSyncActive
+                            ? 'bg-amber-500 text-black shadow'
+                            : 'text-zinc-400 hover:text-white'
+                        }`}
+                        title="Use Action-Only Omni Prompt (Just Animate / Non-Singing Story Continuity)"
+                      >
+                        <span>🎬 Just Animate ({chunk.chunkCode}A)</span>
+                        {chunk.geniusRecommendedEdition === 'ACTION_ONLY_ANIMATE' && (
+                          <span className="text-[9px] px-1 rounded bg-black/25">🧠</span>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Visual Frame / Rendered Chunk Video Viewport */}
+                    <div className="relative aspect-video bg-black rounded-xl overflow-hidden border border-white/10 group">
+                      {chunk.generatedVideoUrl ? (
+                        <video
+                          src={chunk.generatedVideoUrl}
+                          controls
+                          loop
+                          playsInline
+                          className="w-full h-full object-cover"
+                        />
+                      ) : chunk.imageSourceUrl ? (
+                        <img
+                          src={chunk.imageSourceUrl}
+                          alt={chunk.commensurateSceneLabel}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : null}
+
+                      {/* Frame Source Badge */}
+                      <div
+                        className={`absolute top-2 left-2 px-2 py-0.5 rounded-md text-[10px] font-bold backdrop-blur-md border ${
+                          chunk.frameSourceType === 'uploaded'
+                            ? 'bg-emerald-950/85 text-emerald-300 border-emerald-500/40'
+                            : chunk.frameSourceType === 'ai_cloud_generated'
+                              ? 'bg-cyan-950/85 text-cyan-300 border-cyan-500/40'
+                              : 'bg-amber-950/85 text-amber-300 border-amber-500/40'
+                        }`}
+                      >
+                        {chunk.frameSourceType === 'uploaded'
+                          ? '📸 Uploaded Storyboard'
+                          : chunk.frameSourceType === 'ai_cloud_generated'
+                            ? '🎨 AI Cloud Frame'
+                            : '✨ On-The-Fly Commensurate Frame'}
+                      </div>
+
+                      {/* Play Audio Chunk Slice Button */}
+                      <button
+                        type="button"
+                        onClick={() => togglePlayChunkAudio(chunk)}
+                        className="absolute bottom-2 right-2 px-2.5 py-1 rounded-lg bg-black/80 hover:bg-black text-white text-[10px] font-semibold border border-white/15 flex items-center gap-1 cursor-pointer"
+                      >
+                        {isPlayingAudio ? (
+                          <Pause className="w-3 h-3 text-cyan-400" />
+                        ) : (
+                          <Play className="w-3 h-3 text-cyan-400" />
+                        )}
+                        <span>{isPlayingAudio ? 'Stop Slice' : 'Play Audio Slice'}</span>
+                      </button>
+                    </div>
+
+                    {/* Sub-Windows (Pre-Lyric / Lip-Sync / Post-Lyric) or Action-Only Summary */}
+                    {isLipSyncActive ? (
+                      <div className="space-y-1.5">
+                        {chunk.lipSyncWindow && (
+                          <div className="grid grid-cols-3 gap-1 text-[9px] font-mono">
+                            <div className="px-1.5 py-1 rounded bg-white/4 border border-white/6 text-zinc-400 truncate">
+                              Pre: {chunk.preLyricWindow || '0.0s'}
+                            </div>
+                            <div className="px-1.5 py-1 rounded bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 font-bold truncate">
+                              Sing: {chunk.lipSyncWindow}
+                            </div>
+                            <div className="px-1.5 py-1 rounded bg-white/4 border border-white/6 text-zinc-400 truncate">
+                              Post: {chunk.postLyricWindow || 'End'}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between text-[10px] text-zinc-400">
+                          <span>Bar-by-Bar Sung Lyric Cue:</span>
+                          <span className="font-mono text-cyan-300">
+                            Vocal Energy: {Math.round(chunk.vocalEnergyScore * 100)}%
+                          </span>
+                        </div>
+                        <input
+                          type="text"
+                          value={chunk.syncedLyrics}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setChunks((prev) =>
+                              prev.map((c) =>
+                                c.chunkIndex === chunk.chunkIndex
+                                  ? { ...c, syncedLyrics: val }
+                                  : c
+                              )
+                            );
+                          }}
+                          className="w-full bg-[#0b0b12] border border-cyan-500/30 rounded-lg px-2.5 py-1.5 text-xs text-cyan-100 font-mono focus:outline-none focus:border-cyan-400"
+                        />
+                      </div>
+                    ) : (
+                      <div className="p-2.5 rounded-xl bg-amber-950/20 border border-amber-500/30 space-y-1">
+                        <div className="flex items-center justify-between text-[10px] font-bold text-amber-300">
+                          <span>🎬 Action-Only Story Direction (Scene {chunk.chunkCode}A)</span>
+                          <span className="font-mono">NO LIP-SYNC</span>
+                        </div>
+                        <p className="text-[11px] text-zinc-300 leading-relaxed line-clamp-3">
+                          {chunk.actionOnlySummary ||
+                            'No singing. Keep the mouth naturally relaxed and mostly closed with natural environmental story motion.'}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* 1-Click Copy Omni Prompts Bar (Matches HTML Guide Buttons!) */}
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleCopyPromptText(
+                            chunk.primaryOmniPrompt || chunk.prompt,
+                            `primary-${chunk.chunkIndex}`
+                          )
+                        }
+                        className="py-1.5 px-2 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/25 text-cyan-200 text-[10px] font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
+                        title="Copy Primary Omni Prompt (Bar-by-Bar Lip-Sync Version)"
+                      >
+                        {copiedSceneKey === `primary-${chunk.chunkIndex}` ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span>Copied Primary!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copy Primary (Lip-Sync)</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleCopyPromptText(
+                            chunk.actionOnlyOmniPrompt || chunk.prompt,
+                            `action-${chunk.chunkIndex}`
+                          )
+                        }
+                        className="py-1.5 px-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/25 text-amber-200 text-[10px] font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
+                        title="Copy Action-Only Omni Prompt (Just Animate / Non-Singing Version)"
+                      >
+                        {copiedSceneKey === `action-${chunk.chunkIndex}` ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span>Copied Action!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copy Action (Animate)</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
-                </div>
 
                 {/* Bottom Controls: Camera Motion + Frame Actions + Single Chunk Render */}
                 <div className="pt-2 border-t border-white/6 space-y-2">

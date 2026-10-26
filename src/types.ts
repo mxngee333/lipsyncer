@@ -221,6 +221,14 @@ export interface StoryboardDirectorScene {
   imagePrompt: string;
   primaryOmniPrompt: string;
   actionOnlyOmniPrompt: string;
+  activePromptEdition?: OmniPromptEdition;
+  geniusRecommendedEdition?: OmniPromptEdition;
+  geniusSettingCategory?: GeniusSceneSettingCategory;
+  geniusReason?: string;
+  barByBarLyrics?: string;
+  preLyricWindow?: string;
+  lipSyncWindow?: string;
+  postLyricWindow?: string;
   generatedImageUrl?: string;
   generatedVideoUrl?: string;
   selectedModelId?: string;
@@ -260,6 +268,60 @@ export type FullSongSceneFrameSource =
   | 'commensurate_synthesized'
   | 'ai_cloud_generated';
 
+export type OmniPromptEdition = 'PRIMARY_LIPSYNC' | 'ACTION_ONLY_ANIMATE';
+
+export type GeniusSceneSettingCategory =
+  | 'Instrumental Intro'
+  | 'Market & Commerce'
+  | 'Office & Workplace'
+  | 'Family & Domestic'
+  | 'Transit & Commute'
+  | 'Community Outreach'
+  | 'Silent Prayer Circle'
+  | 'Neighborhood Walk Serenade'
+  | 'Sanctuary & Worship'
+  | 'Rooftop & Porch Testimony'
+  | 'Communal Celebration';
+
+export interface OmniHtmlGuideSceneData {
+  sceneNumber: number; // 1..20
+  sceneCode: string; // "01".."20"
+  imageFileName: string; // e.g. "05_Golden_Hour_Market_Handshake.png"
+  sceneTitle: string; // e.g. "Golden Hour Market Handshake"
+  songEditWindow: string; // e.g. "00:31.8 - 00:37.1"
+  startTimeSec: number; // e.g. 31.8
+  endTimeSec: number; // e.g. 37.1
+  omniDurationSec: number; // e.g. 10.0
+  guideDefaultMode: 'LIP-SYNC' | 'NO LIP-SYNC';
+  barByBarLyrics: string;
+  cleanSungLyrics: string;
+  preLyricWindow?: string; // e.g. "0.0s - 2.4s"
+  lipSyncWindow?: string; // e.g. "2.4s - 4.3s"
+  postLyricWindow?: string; // e.g. "4.3s - 10.0s"
+  preLyricStartSec?: number;
+  lipSyncStartSec?: number;
+  lipSyncEndSec?: number;
+  primaryOmniPrompt: string;
+  actionOnlyOmniPrompt: string;
+  actionOnlySummary: string;
+  geniusRecommendedEdition: OmniPromptEdition;
+  geniusSettingCategory: GeniusSceneSettingCategory;
+  geniusReason: string;
+  geniusConfidence: number;
+}
+
+export interface OmniHtmlGuideParsedProject {
+  songTitle: string;
+  audioDurationSec: number;
+  audioDurationFormatted: string;
+  primaryGrooveBpm: number;
+  doubleTimeBpm: number;
+  meter: string;
+  genreStyle: string;
+  musicalStyleLock: string;
+  scenes: OmniHtmlGuideSceneData[];
+}
+
 export interface FullSongVideoChunk {
   chunkIndex: number; // 1..N
   chunkCode: string; // "01".."20"
@@ -279,6 +341,19 @@ export interface FullSongVideoChunk {
   commensurateSceneLabel: string;
   cameraMovement: CameraMotionPreset;
   prompt: string;
+  primaryOmniPrompt?: string;
+  actionOnlyOmniPrompt?: string;
+  actionOnlySummary?: string;
+  activePromptEdition?: OmniPromptEdition;
+  geniusRecommendedEdition?: OmniPromptEdition;
+  geniusSettingCategory?: GeniusSceneSettingCategory;
+  geniusReason?: string;
+  barByBarLyrics?: string;
+  preLyricWindow?: string;
+  lipSyncWindow?: string;
+  postLyricWindow?: string;
+  lipSyncStartRelSec?: number;
+  lipSyncEndRelSec?: number;
   selectedModelId: string;
   generatedVideoUrl?: string;
   generatedVideoBlob?: Blob;
@@ -320,6 +395,7 @@ export interface UnraveledStoryboardFrame {
   parsedEndSec?: number;
   manifestLyrics?: string;
   manifestPrompt?: string;
+  omniSceneGuide?: OmniHtmlGuideSceneData;
 }
 
 export interface UnraveledStoryboardSetResult {
@@ -329,6 +405,7 @@ export interface UnraveledStoryboardSetResult {
   missingSceneNumbers: number[]; // Any unfilled slots in 1..20
   detectedSongTitle?: string;
   detectedManifestLyrics?: string;
+  parsedOmniGuide?: OmniHtmlGuideParsedProject;
   extractedWavChunks?: Array<{ index: number; fileName: string; blob: Blob }>;
 }
 

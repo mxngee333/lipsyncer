@@ -1,109 +1,44 @@
-# ⚔️ THE 24 ELDERS ELITE CODING WAR ROOM — SHIPMENT REPORT (MISSION "666")
-
-**Project:** LipSyncer AI — OpenArt Multi-Model Lip-Sync Studio & 20-Scene Music Video Storyboard Director  
-**Workspace:** `d:\donwloads\LIPSYNCER`  
-**Live Production URL:** [https://lipsyncer.web.app](https://lipsyncer.web.app)  
-**GitHub Repository:** [https://github.com/mxngee333/lipsyncer](https://github.com/mxngee333/lipsyncer)  
-**Firebase Dedicated Target:** Project `modelissacom` → Site `lipsyncer` (Rule 112 Multi-Site Compliance)  
-**Test Suite:** 13 / 13 Vitest unit tests passing (100% green checkmarks)  
-**Build Engine:** Vite 6 + Tailwind CSS v4 + Static Site Generation (9 Physical HTML Routes + Sitemap + Robots)
+# 👑 THE 24 ELDERS ELITE CODING WAR ROOM REPORT (`666`)
+**Project:** LipSyncer OpenArt AI Studio (`https://lipsyncer.web.app`)  
+**Feature:** Omni Classic HTML Guide Parser (`Lord_I_Am_Grateful_OMNI_Classic_HTML_72.018BPM.html`) & **🧠 Genius Contextual Scene Intelligence (Lip-Sync vs. Just Animate)**
 
 ---
 
-## 🏛️ Executive Summary & Architecture Overview
+## 1. Executive Summary
+The 24 Elders War Room has engineered and shipped the **Omni Classic HTML Guide Ingest & Genius Contextual Scene Intelligence Engine** across both **Full Song Video Mode** and the **20-Scene Storyboard Director**:
 
-By decree of **The 24 Elders Elite Coding War Room**, LipSyncer AI has been designed, built, hardened, verified, and deployed to production. Modeled directly upon the OpenArt studio architecture (with matching hero banners, provider pills, feature tags, and model cards), the platform integrates **11 specialized AI lip-sync models** across two primary production workflows:
+1. **Omni Classic HTML & TXT Guide Parser ([`omniHtmlGuideService.ts`](file:///d:/donwloads/LIPSYNCER/src/services/omniHtmlGuideService.ts)):**
+   - Parses standalone Omni Navigator `.html` files (such as `Lord_I_Am_Grateful_OMNI_Classic_HTML_72.018BPM (1).html`) and `.txt` Command Boards, extracting all 20 scenes (`SCENE 01`..`SCENE 20`), exact `SONG EDIT WINDOW` timestamps (`00:00.0` to `02:43.0`), `PRE-LYRIC ACTION WINDOW`, `LIP-SYNC WINDOW`, `POST-LYRIC ACTION WINDOW`, `BAR 1 / PAUSE COMMAND AFTER BAR 1 / BAR 2` lyrics, and **both prompt editions**:
+     - **🎤 Primary Omni Prompt (`PRIMARY_LIPSYNC` — Lip-Sync Version)**
+     - **🎬 Action-Only Omni Prompt (`ACTION_ONLY_ANIMATE` — Just Animate / Non-Singing Story Version)**
+   - Includes a 1-click **`📜 Load 72.018 BPM Omni HTML Guide`** preset (`getLordIAmGratefulOmniGuidePreset`) so you can immediately load or test all 20 scenes of *Lord I Am Grateful* (`72.018 BPM` / `164.04s`).
 
-1. **Video + Audio Mode (Neural Mouth Re-Sync):** Replaces existing lip movements in uploaded videos with sample-accurate vocal phonemes.
-2. **Image + Audio Mode (Singing & Talking Portraits):** Animates single portrait images into lifelike vocal performances with emotional nuance, head movements, and camera motion.
-3. **20-Scene Music Video Storyboard & Omni Director:** Built upon the canonical `music-video-storyboard-director` engine, delivering complete Song DNA analysis (BPM, felt tempo classification, Omni 10s bar capacity), Folder A / Folder B ZIP packaging, zero on-screen text enforcement, and dual standalone offline HTML navigators.
+2. **🧠 Genius Contextual Scene Intelligence (`classifySceneEditionWithGeniusIntelligence`):**
+   - Evaluates each scene's setting, image filename, and action prompts across **11 semantic setting categories** to automatically decide whether the scene should use **Lip-Sync (`PRIMARY_LIPSYNC`)** or **Just Animate (`ACTION_ONLY_ANIMATE` / No Lip-Sync)**:
+     - **Automatically routed to `ACTION_ONLY_ANIMATE` (Just Animate / No Lip-Sync — 12 Scenes):**
+       - **Market & Commerce:** Scene `05` (`05_Golden_Hour_Market_Handshake.png`) — *Shaking hands with a market vendor or inspecting fruit while singing mid-handshake looks unnatural; Action-Only keeps the mouth naturally relaxed while preserving warm human interaction.*
+       - **Office & Workplace:** Scenes `03` (`Conference Room`), `04` (`Office Break Area`), `13` (`Office Mentorship`)
+       - **Family & Domestic Activity:** Scenes `06` (`Family Grocery Unpacking`), `07` (`Father Adjusting Son School Backpack`), `08` (`Family Dinner Gathering`)
+       - **Transit & Commute:** Scene `12` (`Contemplation On A City Bus`)
+       - **Community Outreach & Service:** Scenes `14` (`Golden Hour Grocery Gift`), `15` (`Community Meal Distribution Day`)
+       - **Instrumental Intro & Silent Prayer Circle:** Scenes `01` (`Bedroom Intro`), `18` (`Family Candlelit Prayer Circle`)
+     - **Automatically routed to `PRIMARY_LIPSYNC` (Bar-by-Bar Lip-Sync Singing — 8 Singing Scenes):**
+       - **Neighborhood Walk Serenade:** Scene `02` (`02_Golden_Walk_Through_The_Neighborhood.png`)
+       - **Sanctuary & Worship:** Scenes `09` (`09_Heartfelt_Worship_In_Golden_Light.png`), `17` (`17_Joyful_Worship_Band_Performance.png`)
+       - **Rooftop & Porch Testimony:** Scenes `10` (`Rooftop Reflection`), `11` (`Golden Porch Gospel`), `20` (`Grateful Heart Over The City`)
+       - **Communal Celebration:** Scenes `16` (`Courtyard Celebration`), `19` (`Joyful Gospel Celebration`)
 
----
-
-## 🎬 11 Supported Lip-Sync & Video Models
-
-| # | Model Name | Provider | Quality Tier | Max Duration | Key Capabilities |
-|---|---|---|---|---|---|
-| 1 | **Seedance 2.0 Mini** | ByteDance | Free Tier | 10.0s | Instant phoneme lock, subtle head gestures, emotional eyes |
-| 2 | **LTX 2.5 Audio-to-Video** | Lightricks | Free Tier | 10.0s | Audio conditioning, smooth 24fps motion, start/end frame |
-| 3 | **ByteDance LatentSync 1.5** | ByteDance | Free Tier | 15.0s | Video-to-Video neural mouth re-sync, high lip articulation |
-| 4 | **Kling 3.0 Omni Lip-Sync** | Kling AI | Pro Tier | 10.0s | Ultra-photorealistic expressions, multi-character sync |
-| 5 | **PixVerse C1 Character Sync** | PixVerse | Free Tier | 8.0s | Anime & stylized character mouth sync, 1080p |
-| 6 | **PixVerse V6 Ultra Sync** | PixVerse | Pro Tier | 12.0s | Hyper-detailed skin texture, realistic micro-movements |
-| 7 | **HappyHorse 1.1 Expressive** | HappyHorse | Free Tier | 10.0s | Dynamic physical gestures, singing performance cadence |
-| 8 | **HappyHorse 1.0 Fast** | HappyHorse | Instant Tier | 6.0s | Rapid turnaround draft renders |
-| 9 | **Alibaba Wan 2.7 Multi-Shot** | Alibaba Wan | Pro Tier | 10.0s | Cinematic depth-of-field, natural breathing, camera push-in |
-| 10 | **Veo 3.1 4K Master Sync** | Google DeepMind | Pro Tier | 15.0s | 4K master grade, photorealistic micro-expressions |
-| 11 | **LipSyncer 60fps Formant DSP** | LipSyncer DSP | Instant (0s) | 60.0s | Local Web Audio API formant viseme engine, zero cloud cost |
-
----
-
-## 🎼 20-Scene Music Video Storyboard Director
-
-Directly ported from `music-video-storyboard-director`, this section provides an institutional-grade music video pre-production suite:
-
-- **Song DNA Analysis Engine:**
-  - Genre classification (`Cinematic Pop`, `Contemporary Gospel`, `Acoustic Soul`, `Hip-Hop / Trap`, `Electronic / Synthwave`).
-  - Felt tempo classification (`SLOW` <75 BPM, `SLOW-TO-MID` 75-88, `MID-TEMPO` 89-110, `UP-TEMPO` 111-135, `HIGH/FAST` >135).
-  - Double-time / half-time grid calculation.
-  - 10-second Omni bar capacity calculus (`10 / barLength44Sec`).
-  - Musical style lock directive for continuous sound-stage cohesion.
-- **Folder A (Scenes 01–10) & Folder B (Scenes 11–20) Split:**
-  - Guaranteed chronological division across 2 production batches.
-  - Scene types: `LIP-SYNC`, `NARRATIVE`, `B-ROLL`, `TRANSITION`.
-  - Exact words to lip-sync, phoneme syllable counts, repetition counts.
-- **Strict Zero On-Screen Text Enforcement:**
-  - Negative prompt injection: `no lyrics, no subtitles, no captions, no song title, no artist name, no watermarks, no typography, no visible words, ZERO on-screen text`.
-  - Every visual keyframe prompt explicitly instructs image generators that words are to be **sung by the subject**, never rendered onto the image.
-- **Isolated Omni Copy Blocks:**
-  - `=== COPY THIS INTO OMNI - PRIMARY ===`
-  - `=== COPY THIS INTO OMNI - ACTION ONLY ===` (with hardcore `NO SINGING. NO LIP-SYNC. NO DIALOGUE.` lock).
-- **Deliverable Packagers:**
-  - `packageFolderAZip`: Bundles 10 keyframe images, `Folder_A_Scenes_01_to_10_Omni_Prompts.txt`, and both offline HTML navigators.
-  - `packageFolderBZip`: Bundles 10 keyframe images and `Folder_B_Scenes_11_to_20_Omni_Prompts.txt`.
-  - `buildCanonicalOmniBoardTxt`: The master monolithic production TXT document.
-  - `buildLegacySimpleNavigatorHtml`: Standalone dark-mode offline HTML browser.
-  - `buildSmartProductionConsoleHtml`: Premium interactive offline console with copy buttons, filters, and audio scrubber.
+3. **2-Way Interactive Edition Switcher & Sub-Window Lip-Sync Lock:**
+   - Every scene card in [`FullSongVideoModeView.tsx`](file:///d:/donwloads/LIPSYNCER/src/components/FullSongVideoModeView.tsx) and [`StoryboardDirectorView.tsx`](file:///d:/donwloads/LIPSYNCER/src/components/StoryboardDirectorView.tsx) displays its **Genius Setting Category**, **Reasoning**, a **2-Way Toggle (`🎤 Lip-Sync (Primary)` vs `🎬 Just Animate (Action-Only)`)**, and **1-Click Copy Primary / Copy Action-Only** buttons.
+   - Bulk mode controls let you switch the entire board with 1 click: **`🧠 Apply Genius Scene Mix (Auto)`**, **`🎤 All Lip-Sync (Primary)`**, or **`🎬 All Just Animate (Action-Only)`**.
+   - During the 60fps Master MP4 Merge (`mergeFullSongVideoMaster`), `ACTION_ONLY_ANIMATE` scenes keep the mouth naturally relaxed (`NO LIP-SYNC`), and `PRIMARY_LIPSYNC` scenes restrict jaw/lip viseme articulation strictly to the scene's `LIP-SYNC WINDOW` (`lipSyncStartRelSec`..`lipSyncEndRelSec`), keeping the mouth relaxed during the `PRE-LYRIC` and `POST-LYRIC` action windows.
 
 ---
 
-## 🛡️ ZeroGPU Mesh, Quota Interceptor & R2 Vault
-
-1. **12-Account Hugging Face Token Pool:**
-   - Multi-token auto-failover with runtime base64 de-obfuscation.
-   - In-memory fallback storage ensuring identical behavior in Node SSR, Vitest, and browser environments.
-   - 20-minute cooldown tracking with automated self-healing if 100% of accounts enter cooldown.
-2. **Quota Interceptor Modal:**
-   - Detects HTTP 429 and `"You have exceeded your GPU quota"` errors.
-   - Provides a prominent 1-click fallback button: **"Run Instant 60fps Formant Viseme DSP"**, rendering full lip-sync directly in the browser with 0ms cloud latency.
-3. **Cloudflare R2 Vault CDN:**
-   - Native Web Crypto `crypto.subtle` HMAC-SHA256 AWS SigV4 presigned upload engine.
-   - Direct PUT streaming to `vault.modelissa.com` / R2 bucket `lipsyncer-media-vault`.
-   - Zero cloud bandwidth egress fees.
-4. **IndexedDB Binary Cache:**
-   - High-performance binary storage in `lipsyncer_media_vault`.
-   - Enables instant 0ms offline replay and cross-session persistence of all rendered takes.
-
----
-
-## 🚀 Live Production Links & Verification
-
-- **Live Web App:** [https://lipsyncer.web.app](https://lipsyncer.web.app)
-- **Full Song Video Mode Route:** [https://lipsyncer.web.app/full-song-video/](https://lipsyncer.web.app/full-song-video/)
-- **Model Directory Route:** [https://lipsyncer.web.app/models/](https://lipsyncer.web.app/models/)
-- **Storyboard Director Route:** [https://lipsyncer.web.app/storyboard-director/](https://lipsyncer.web.app/storyboard-director/)
-- **Model Arena Route:** [https://lipsyncer.web.app/arena/](https://lipsyncer.web.app/arena/)
-- **Documentation & How-to:** [https://lipsyncer.web.app/how-to-use/](https://lipsyncer.web.app/how-to-use/)
-- **Sitemap XML:** [https://lipsyncer.web.app/sitemap.xml](https://lipsyncer.web.app/sitemap.xml)
-- **GitHub Repository:** [https://github.com/mxngee333/lipsyncer](https://github.com/mxngee333/lipsyncer)
-
----
-
-## 🎵 Full Song Video Mode & Audiospliter Vocal DSP Engine
-
-- **Intelligent Audio Chunking (`computeSmartAudioChunkBoundaries`):** Supports **Smart Vocal DSP Breath-Valley Chunking**, **Audiospliter Fixed `Min : Sec` Interval Splitting**, and **Target Scene Count** (e.g., 20 scenes), with 1-click `.zip` export of all sample-accurate 16-bit PCM WAV chunks (`packageAudioChunksZip`).
-- **🧠 Sync Lyrics with Audio Signal (AI + Vocal DSP) (`syncLyricsWithAudioSignal`):** Pairs in-browser WebAssembly Whisper AI transcription with 50Hz vocal formant energy analysis (`280Hz–3600Hz`) and LRC timestamp alignment, automatically toggling `LIP-SYNC` vs `CINEMATIC-MOTION` per chunk.
-- **On-The-Fly Commensurate Scene Frame Synthesis (`synthesizeCommensurateSceneFrame`):** Automatically detects when uploaded storyboard images fall short of total audio chunks (e.g., 14 uploaded images for 20 chunks) and synthesizes commensurate 1080p cinema frames on-the-fly anchored to the uploaded reference art with **ZERO on-screen text**.
-- **Exact, Clean 1080p MP4 Master Video Merger (`mergeFullSongVideoMaster`):** Stitches all chunk clips and 60fps vocal-formant-articulated frames against the **single uncut master song audio track** with `0.18s` optical cross-dissolves and sub-millisecond adaptive clock rate sync, eliminating boundary pops or audio drift.
-
-*Mission "666" fully accomplished by The 24 Elders.*
+## 2. Files Created & Updated
+- [`src/services/omniHtmlGuideService.ts`](file:///d:/donwloads/LIPSYNCER/src/services/omniHtmlGuideService.ts) — Omni Classic HTML & TXT Guide parser, Genius Contextual Scene Classifier (`classifySceneEditionWithGeniusIntelligence`), and 20-scene `Lord I Am Grateful` (`72.018 BPM`) preset.
+- [`src/services/fullSongVideoService.ts`](file:///d:/donwloads/LIPSYNCER/src/services/fullSongVideoService.ts) — Integrated `.html` guide ingestion into `unravelStoryboardFilesAndZips`, exact `SONG EDIT WINDOW` chunk alignment, `switchChunkPromptEdition`, and sub-window lip-sync viseme gating in `mergeFullSongVideoMaster`.
+- [`src/components/FullSongVideoModeView.tsx`](file:///d:/donwloads/LIPSYNCER/src/components/FullSongVideoModeView.tsx) — Added `.html` guide upload, `📜 Load 72.018 BPM Guide` button, Genius Director Intelligence panel, filter tabs, and per-chunk 2-way Lip-Sync vs. Just-Animate switcher.
+- [`src/components/StoryboardDirectorView.tsx`](file:///d:/donwloads/LIPSYNCER/src/components/StoryboardDirectorView.tsx) — Added `.html` guide upload, `📜 Load 72.018 BPM Omni HTML Guide` button, Genius Director Intelligence bar, and per-scene 2-way Lip-Sync vs. Just-Animate switcher.
+- [`src/types.ts`](file:///d:/donwloads/LIPSYNCER/src/types.ts) — Added `OmniPromptEdition`, `GeniusSceneSettingCategory`, `OmniHtmlGuideSceneData`, and `OmniHtmlGuideParsedProject`.
+- [`src/services/__tests__/lipsyncer.test.ts`](file:///d:/donwloads/LIPSYNCER/src/services/__tests__/lipsyncer.test.ts) — 15/15 passing Vitest unit tests including market setting (`05_Golden_Hour_Market_Handshake.png`) vs. worship setting (`09_Heartfelt_Worship_In_Golden_Light.png`) Genius classification and HTML DOM guide parsing.

@@ -22,8 +22,14 @@ import {
   synthesizeCommensurateSceneFrame,
   buildFullSongVideoChunks,
   unravelStoryboardFilesAndZips,
-  parseStoryboardFileNameMeta
+  parseStoryboardFileNameMeta,
+  switchChunkPromptEdition
 } from '../fullSongVideoService';
+import {
+  classifySceneEditionWithGeniusIntelligence,
+  getLordIAmGratefulOmniGuidePreset,
+  parseOmniNavigatorHtmlGuide
+} from '../omniHtmlGuideService';
 import JSZip from 'jszip';
 import { generateDemoVocalWavBlob } from '../audioDspService';
 
@@ -314,5 +320,71 @@ describe('Full Song Video Mode: Audiospliter Chunking, Vocal DSP Lyric Sync & On
     });
     expect(offsetCheck.sceneNumber).toBe(13);
     expect(offsetCheck.folderBatch).toBe('B');
+  });
+
+  it('should classify Market setting (05_Golden_Hour_Market_Handshake.png) as ACTION_ONLY_ANIMATE (Just Animate / No Lip-Sync) and Worship setting as PRIMARY_LIPSYNC', () => {
+    const marketScene = classifySceneEditionWithGeniusIntelligence({
+      sceneNumber: 5,
+      sceneTitle: 'Golden Hour Market Handshake',
+      imageFileName: '05_Golden_Hour_Market_Handshake.png',
+      cleanSungLyrics: "Now there's peace around my table / Joy inside my home"
+    });
+    expect(marketScene.recommendedEdition).toBe('ACTION_ONLY_ANIMATE');
+    expect(marketScene.settingCategory).toBe('Market & Commerce');
+    expect(marketScene.reason.toLowerCase()).toContain('market');
+
+    const worshipScene = classifySceneEditionWithGeniusIntelligence({
+      sceneNumber: 9,
+      sceneTitle: 'Heartfelt Worship In Golden Light',
+      imageFileName: '09_Heartfelt_Worship_In_Golden_Light.png',
+      cleanSungLyrics: 'Oh Lord, I am grateful / Look how far You brought me through'
+    });
+    expect(worshipScene.recommendedEdition).toBe('PRIMARY_LIPSYNC');
+    expect(worshipScene.settingCategory).toBe('Sanctuary & Worship');
+
+    const preset = getLordIAmGratefulOmniGuidePreset();
+    expect(preset.scenes.length).toBe(20);
+    expect(preset.primaryGrooveBpm).toBeCloseTo(72.018, 3);
+    expect(preset.scenes[4].sceneCode).toBe('05');
+    expect(preset.scenes[4].geniusRecommendedEdition).toBe('ACTION_ONLY_ANIMATE');
+    expect(preset.scenes[4].actionOnlyOmniPrompt).toContain('NO SINGING. NO LIP-SYNC');
+    expect(preset.scenes[8].sceneCode).toBe('09');
+    expect(preset.scenes[8].geniusRecommendedEdition).toBe('PRIMARY_LIPSYNC');
+    expect(preset.scenes[8].primaryOmniPrompt).toContain('BAR 1');
+
+    // Also verify HTML DOM parsing of an Omni Classic HTML Guide snippet
+    const sampleHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head><title>Lord I Am Grateful — OMNI Classic Navigator (72.018 BPM)</title></head>
+        <body>
+          <section class="scene" id="scene-05">
+            <div class="scene-head">
+              <h2>05_Golden_Hour_Market_Handshake.png</h2>
+              <span class="badge">LIP-SYNC</span>
+            </div>
+            <div class="meta">00:31.8 - 00:37.1</div>
+            <details><pre>SONG EDIT WINDOW: 00:31.8 - 00:37.1\nPRE-LYRIC ACTION WINDOW: 0.0s - 0.5s\nLIP-SYNC WINDOW: 0.5s - 4.7s\nPOST-LYRIC ACTION WINDOW: 4.7s - 10.0s</pre></details>
+            <div class="prompt-grid">
+              <div class="prompt-card">
+                <h3>Primary Omni Prompt</h3>
+                <pre>SCENE: 05\nSYNC MODE: LIP-SYNC\nBAR 1: "Now there's peace around my table"</pre>
+              </div>
+              <div class="prompt-card">
+                <h3>Action-Only Omni Prompt</h3>
+                <pre>SCENE: 05A\nSYNC MODE: NO LIP-SYNC\nNO SINGING. NO LIP-SYNC. NO DIALOGUE.</pre>
+              </div>
+            </div>
+          </section>
+        </body>
+      </html>
+    `;
+    const parsed = parseOmniNavigatorHtmlGuide(sampleHtml);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.scenes.length).toBe(1);
+    expect(parsed?.scenes[0].sceneNumber).toBe(5);
+    expect(parsed?.scenes[0].startTimeSec).toBeCloseTo(31.8, 1);
+    expect(parsed?.scenes[0].endTimeSec).toBeCloseTo(37.1, 1);
+    expect(parsed?.scenes[0].geniusRecommendedEdition).toBe('ACTION_ONLY_ANIMATE');
   });
 });
