@@ -1102,24 +1102,56 @@ export async function synthesizeCommensurateSceneFrame(params: {
 
 /**
  * Switches a single `FullSongVideoChunk` between the two Omni HTML Guide Prompt Editions:
- * - `PRIMARY_LIPSYNC` (Bar-by-Bar Lip-Sync Singing Version)
- * - `ACTION_ONLY_ANIMATE` (Just Animate / Non-Singing Story Continuity Version)
+ * - `PRIMARY_LIPSYNC` (Bar-by-Bar Lip-Sync Singing Version — takes over both Copy Instruction & Lip-Sync Event)
+ * - `ACTION_ONLY_ANIMATE` (Just Animate / Non-Singing Story Continuity Version — takes over Copy Instruction & disables Lip-Sync Event)
  */
 export function switchChunkPromptEdition(
   chunk: FullSongVideoChunk,
   edition: OmniPromptEdition
 ): FullSongVideoChunk {
   const isLipSync = edition === 'PRIMARY_LIPSYNC';
-  const nextPrompt = isLipSync
-    ? chunk.primaryOmniPrompt || chunk.prompt
-    : chunk.actionOnlyOmniPrompt ||
-      `NO ON-SCREEN TEXT: Zero visible text.\nSCENE: ${chunk.chunkCode}A\nSYNC MODE: NO LIP-SYNC\nABSOLUTE RULE: NO SINGING. NO LIP-SYNC. NO DIALOGUE. Keep the mouth naturally relaxed and mostly closed.\nPROMPT: ${chunk.actionOnlySummary || 'Continue the scene with natural story action and smooth camera pacing without singing.'}`;
+  const modeChanged = chunk.activePromptEdition !== edition;
+
+  const upgradedLyrics =
+    isLipSync && (!chunk.syncedLyrics || /NONE\s*-/i.test(chunk.syncedLyrics))
+      ? 'Lord I am grateful, lifting my voice in thankful praise'
+      : chunk.syncedLyrics;
+
+  let nextPrimaryPrompt =
+    chunk.primaryOmniPrompt ||
+    `NO ON-SCREEN TEXT:\nNo subtitles, captions, visible lyrics, titles, logos or watermarks - video must contain ZERO visible text.\n\nSCENE: ${chunk.chunkCode}\nSONG EDIT WINDOW: ${chunk.timeWindowFormatted}\nSYNC MODE: LIP-SYNC\nEXACT WORDS TO LIP-SYNC - BAR BY BAR:\n${chunk.barByBarLyrics || `BAR 1: "${upgradedLyrics}"`}\nPROMPT:\nLead vocalist performs exact phoneme and syllable lip-sync to "${upgradedLyrics}" with natural breathing and expressive ${chunk.cameraMovement.replace('_', ' ')} camera motion.`;
+
+  // If the user explicitly toggles Lip-Sync ON for a scene that was originally NO LIP-SYNC (e.g. Scene 01),
+  // take over the instruction so SYNC MODE becomes LIP-SYNC with active vocal delivery!
+  if (isLipSync && /SYNC MODE:\s*NO LIP-SYNC/i.test(nextPrimaryPrompt)) {
+    nextPrimaryPrompt = nextPrimaryPrompt
+      .replace(/SYNC MODE:\s*NO LIP-SYNC/gi, 'SYNC MODE: LIP-SYNC (USER OVERRIDE TAKEOVER)')
+      .replace(
+        /"NONE\s*-\s*instrumental\s*\/\s*narrative only"/gi,
+        `BAR 1: "${upgradedLyrics}"`
+      )
+      .replace(
+        /Keep the mouth relaxed and mostly closed\./gi,
+        `Lip-sync every sung syllable of "${upgradedLyrics}" with natural jaw/lip articulation matched to the master audio track.`
+      );
+  }
+
+  const nextActionPrompt =
+    chunk.actionOnlyOmniPrompt ||
+    `NO ON-SCREEN TEXT:\nNo subtitles, captions, visible lyrics, titles, logos or watermarks - video must contain ZERO visible text.\n\nSCENE: ${chunk.chunkCode}A\nSONG EDIT WINDOW: ${chunk.timeWindowFormatted}\nSYNC MODE: NO LIP-SYNC\nABSOLUTE RULE:\nNO SINGING. NO LIP-SYNC. NO DIALOGUE. Keep the mouth naturally relaxed and mostly closed.\nPROMPT:\n${chunk.actionOnlySummary || 'Continue the scene with natural story action and smooth camera pacing without singing.'}`;
+
+  const nextPrompt = isLipSync ? nextPrimaryPrompt : nextActionPrompt;
 
   return {
     ...chunk,
     activePromptEdition: edition,
     syncMode: isLipSync ? 'LIP-SYNC' : 'CINEMATIC-MOTION',
-    prompt: nextPrompt
+    syncedLyrics: upgradedLyrics,
+    primaryOmniPrompt: nextPrimaryPrompt,
+    actionOnlyOmniPrompt: nextActionPrompt,
+    prompt: nextPrompt,
+    generatedVideoUrl: modeChanged ? undefined : chunk.generatedVideoUrl,
+    generatedVideoBlob: modeChanged ? undefined : chunk.generatedVideoBlob
   };
 }
 

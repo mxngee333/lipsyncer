@@ -22,7 +22,8 @@ import {
   Zap,
   BrainCircuit,
   Copy,
-  Check
+  Check,
+  Sliders
 } from 'lucide-react';
 import {
   AspectRatioOption,
@@ -516,16 +517,76 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
   };
 
   // Switch a single chunk between Lip-Sync (Primary) and Just Animate (Action-Only)
+  // Switch a single chunk between Primary Lip-Sync and Action-Only Just Animate
+  // (Takes over BOTH the Lip-Sync/Animate Event AND the Active Copy Instruction!)
   const handleSwitchSingleChunkEdition = (
     chunkIndex: number,
-    edition: OmniPromptEdition
+    edition: OmniPromptEdition,
+    autoCopyTakeover: boolean = true
   ) => {
     setMergedMasterClip(null);
+    let updatedChunkRef: FullSongVideoChunk | null = null;
     setChunks((prev) =>
-      prev.map((c) =>
-        c.chunkIndex === chunkIndex ? switchChunkPromptEdition(c, edition) : c
-      )
+      prev.map((c) => {
+        if (c.chunkIndex !== chunkIndex) return c;
+        const next = switchChunkPromptEdition(c, edition);
+        updatedChunkRef = next;
+        return next;
+      })
     );
+
+    const target = updatedChunkRef as FullSongVideoChunk | null;
+    if (target) {
+      if (autoCopyTakeover && typeof navigator !== 'undefined' && navigator.clipboard) {
+        void navigator.clipboard.writeText(target.prompt);
+        setCopiedSceneKey(`takeover-${target.chunkIndex}`);
+        setTimeout(() => setCopiedSceneKey(''), 1800);
+      }
+      const isLip = edition === 'PRIMARY_LIPSYNC';
+      const isOverride =
+        target.geniusRecommendedEdition && target.geniusRecommendedEdition !== edition;
+      setStatusBanner({
+        message: isLip
+          ? `⚡ Scene #${target.chunkCode} (${target.commensurateSceneLabel}) → 🎤 LIP-SYNC TAKEOVER ACTIVE${isOverride ? ' (Overrode Genius Animate)' : ''}! Lip-Sync Event & Primary Copy Instruction taken over${autoCopyTakeover ? ' & copied to clipboard' : ''}.`
+          : `⚡ Scene #${target.chunkCode} (${target.commensurateSceneLabel}) → 🎬 JUST ANIMATE TAKEOVER ACTIVE${isOverride ? ' (Overrode Genius Lip-Sync)' : ''}! Action-Only Event (${target.chunkCode}A) & Copy Instruction taken over${autoCopyTakeover ? ' & copied to clipboard' : ''}.`,
+        percent: 100,
+        variant: 'info'
+      });
+    }
+  };
+
+  // 1-Click Toggle Flip (Lip-Sync <-> Just Animate) with automatic Event & Copy Instruction Takeover
+  const handleToggleSingleChunkEdition = (chunk: FullSongVideoChunk) => {
+    const nextEdition: OmniPromptEdition =
+      chunk.syncMode === 'LIP-SYNC' ? 'ACTION_ONLY_ANIMATE' : 'PRIMARY_LIPSYNC';
+    handleSwitchSingleChunkEdition(chunk.chunkIndex, nextEdition, true);
+  };
+
+  // Copy all 20 active scene instructions (reflecting every Genius or User Toggle Takeover)
+  const handleCopyAllActiveTakenOverInstructions = () => {
+    if (chunks.length === 0) return;
+    const mergedText = chunks
+      .map((c) => {
+        const isLip = c.syncMode === 'LIP-SYNC';
+        return [
+          `============================================================`,
+          `SCENE ${c.chunkCode} (${c.timeWindowFormatted}) — ACTIVE MODE: ${
+            isLip ? '🎤 LIP-SYNC (PRIMARY)' : `🎬 JUST ANIMATE (ACTION-ONLY ${c.chunkCode}A)`
+          }`,
+          `SETTING: ${c.geniusSettingCategory || 'Scene'} | ${c.commensurateSceneLabel}`,
+          `============================================================`,
+          c.prompt
+        ].join('\n');
+      })
+      .join('\n\n');
+    void navigator.clipboard.writeText(mergedText);
+    setCopiedSceneKey('all-active-takeover');
+    setTimeout(() => setCopiedSceneKey(''), 2000);
+    setStatusBanner({
+      message: `📋 Copied all ${chunks.length} Active Taken-Over Scene Instructions (${chunks.filter((c) => c.syncMode === 'LIP-SYNC').length} Lip-Sync + ${chunks.filter((c) => c.syncMode !== 'LIP-SYNC').length} Just Animate) to clipboard!`,
+      percent: 100,
+      variant: 'success'
+    });
   };
 
   // Apply Genius Contextual Scene Intelligence across all 20 chunks
@@ -2079,63 +2140,18 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
       {/* ===================================================================== */}
       {/* STEP 4.5: 🧠 GENIUS CONTEXTUAL SCENE INTELLIGENCE & OMNI HTML GUIDE    */}
       {/* ===================================================================== */}
-      <div className="p-6 rounded-3xl bg-gradient-to-br from-amber-950/35 via-[#13131f] to-[#0c0c15] border border-amber-500/35 space-y-4 shadow-xl">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/35 text-[11px] font-bold text-amber-300">
-              <BrainCircuit className="w-3.5 h-3.5" />
-              <span>
-                OMNI CLASSIC HTML GUIDE ADD-ON • 2-WAY SCENE INTELLIGENCE (LIP-SYNC vs JUST ANIMATE)
-              </span>
-            </div>
-            <h2 className="text-lg sm:text-xl font-extrabold text-white">
-              🧠 Genius Director Intelligence: When to Lip-Sync vs When to Just Animate (Action-Only)
-            </h2>
-            <p className="text-xs text-zinc-300 max-w-4xl leading-relaxed">
-              Every scene in your Omni Classic HTML Guide (`{omniGuide?.songTitle || songTitle}` •{' '}
-              <span className="text-amber-300 font-mono font-bold">
-                {omniGuide?.primaryGrooveBpm || analysis?.feltGrooveBpm || 72.018} BPM
-              </span>
-              ) has <strong>two prompt editions</strong>: <strong>🎤 Primary (Bar-by-Bar Lip-Sync)</strong> and{' '}
-              <strong>🎬 Action-Only (Just Animate / No Lip-Sync)</strong>. In real-life interaction settings — such as{' '}
-              <span className="text-amber-200 font-semibold">
-                Scene #05 Market Handshake (`05_Golden_Hour_Market_Handshake.png`), Conference Room (#03), Office Break (#04), Grocery Unpacking (#06), School Backpack (#07), Family Dinner (#08), City Bus (#12), Office Mentorship (#13), Doorstep Gift (#14), Meal Distribution (#15), and Candlelit Prayer (#18)
-              </span>{' '}
-              — singing mid-handshake or while unpacking groceries feels unnatural, so our Genius Intelligence automatically selects the <strong>🎬 Just Animate (Action-Only)</strong> edition while keeping Worship, Walk, Rooftop, Porch, Band, and Celebration scenes on <strong>🎤 Lip-Sync (Primary)</strong>!
-            </p>
+      <div className="p-6 rounded-3xl bg-gradient-to-br from-amber-950/35 via-[#13131f] to-[#0c0c15] border border-amber-500/35 space-y-5 shadow-xl overflow-hidden">
+        {/* Top Row: Badge + Guide Upload/Preset Buttons */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/35 text-[11px] font-bold text-amber-300 w-fit">
+            <BrainCircuit className="w-3.5 h-3.5 shrink-0" />
+            <span>
+              OMNI CLASSIC HTML GUIDE ADD-ON • 2-WAY SCENE INTELLIGENCE &amp; LIP-SYNC TOGGLE TAKEOVER
+            </span>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap shrink-0">
-            <button
-              type="button"
-              onClick={handleApplyGeniusMixToAllChunks}
-              className={`px-4 py-2.5 rounded-xl text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 border transition cursor-pointer ${
-                useGeniusEditionSelection
-                  ? 'bg-gradient-to-r from-amber-500 to-emerald-500 text-black border-amber-300 shadow-lg shadow-amber-500/20'
-                  : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 border-amber-500/35'
-              }`}
-            >
-              <BrainCircuit className="w-4 h-4" />
-              <span>🧠 Apply Genius Scene Mix (Auto)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleSwitchAllChunksToEdition('PRIMARY_LIPSYNC')}
-              className="px-3.5 py-2.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-200 border border-cyan-500/30 text-xs font-bold transition cursor-pointer"
-            >
-              🎤 All Lip-Sync (Primary)
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleSwitchAllChunksToEdition('ACTION_ONLY_ANIMATE')}
-              className="px-3.5 py-2.5 rounded-xl bg-fuchsia-500/15 hover:bg-fuchsia-500/25 text-fuchsia-200 border border-fuchsia-500/30 text-xs font-bold transition cursor-pointer"
-            >
-              🎬 All Just Animate (Action-Only)
-            </button>
-
-            <label className="px-3.5 py-2.5 rounded-xl bg-white/8 hover:bg-white/15 text-white border border-white/15 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition">
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="px-3.5 py-2 rounded-xl bg-white/8 hover:bg-white/15 text-white border border-white/15 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition">
               <Upload className="w-3.5 h-3.5 text-amber-400" />
               <span>Upload Omni .HTML Guide</span>
               <input
@@ -2149,13 +2165,161 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
             <button
               type="button"
               onClick={() => void handleLoadLordIAmGratefulPreset()}
-              className="px-3 py-2.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition cursor-pointer"
+              className="px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition cursor-pointer"
               title="Reload canonical 20-scene Lord I Am Grateful (72.018 BPM) Omni HTML Guide"
             >
               📜 Load 72.018 BPM Guide
             </button>
           </div>
         </div>
+
+        {/* Full-Width Title & Explanation (Never Squished!) */}
+        <div className="space-y-2">
+          <h2 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+            🧠 Genius Director Intelligence: When to Lip-Sync vs When to Just Animate (With Instant Toggle Takeover)
+          </h2>
+          <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
+            Every scene in your Omni Classic HTML Guide (<strong>{omniGuide?.songTitle || songTitle}</strong> •{' '}
+            <span className="text-amber-300 font-mono font-bold">
+              {omniGuide?.primaryGrooveBpm || analysis?.feltGrooveBpm || 72.018} BPM
+            </span>
+            ) has <strong>two prompt editions</strong>: <strong>🎤 Primary (Bar-by-Bar Lip-Sync)</strong> and{' '}
+            <strong>🎬 Action-Only (Just Animate / No Lip-Sync)</strong>. In real-life social &amp; B-roll settings — such as{' '}
+            <span className="text-amber-200 font-semibold">
+              Scene #05 Market Handshake (`05_Golden_Hour_Market_Handshake.png`), Conference Room (#03), Office Break (#04), Grocery Unpacking (#06), School Backpack (#07), Family Dinner (#08), City Bus (#12), Office Mentorship (#13), Doorstep Gift (#14), Meal Distribution (#15), and Candlelit Prayer (#18)
+            </span>{' '}
+            — Genius Intelligence automatically selects <strong>🎬 Just Animate (Action-Only)</strong> while keeping Worship, Walk, Rooftop, Porch, Band, and Celebration scenes on <strong>🎤 Lip-Sync (Primary)</strong>.{' '}
+            <span className="text-cyan-300 font-semibold">
+              Want to override any scene? Flip its 🎤 Lip-Sync ⇄ 🎬 Just Animate toggle below and the chosen mode immediately takes over BOTH the video render event AND the active copy instruction!
+            </span>
+          </p>
+        </div>
+
+        {/* Full-Width Master Mode & Bulk Takeover Action Bar */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          <button
+            type="button"
+            onClick={handleApplyGeniusMixToAllChunks}
+            className={`px-4 py-2.5 rounded-xl text-xs font-extrabold uppercase tracking-wider flex items-center justify-center gap-1.5 border transition cursor-pointer ${
+              useGeniusEditionSelection
+                ? 'bg-gradient-to-r from-amber-500 to-emerald-500 text-black border-amber-300 shadow-lg shadow-amber-500/20'
+                : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 border-amber-500/35'
+            }`}
+          >
+            <BrainCircuit className="w-4 h-4 shrink-0" />
+            <span>🧠 Apply Genius Scene Mix (Auto)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSwitchAllChunksToEdition('PRIMARY_LIPSYNC')}
+            className="px-3.5 py-2.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-200 border border-cyan-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+          >
+            <span>🎤 All Lip-Sync Takeover (Primary)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSwitchAllChunksToEdition('ACTION_ONLY_ANIMATE')}
+            className="px-3.5 py-2.5 rounded-xl bg-fuchsia-500/15 hover:bg-fuchsia-500/25 text-fuchsia-200 border border-fuchsia-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+          >
+            <span>🎬 All Just Animate Takeover (Action-Only)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleCopyAllActiveTakenOverInstructions}
+            className="px-3.5 py-2.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 border border-emerald-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+            title="Copy all 20 active scene instructions reflecting every Genius or Lip-Sync Toggle takeover"
+          >
+            {copiedSceneKey === 'all-active-takeover' ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Copied All 20 Active Instructions!</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-3.5 h-3.5 text-emerald-400" />
+                <span>📋 Copy All Active Instructions</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Interactive 20-Scene Lip-Sync ⇄ Just-Animate Quick-Toggle Takeover Matrix */}
+        {chunks.length > 0 && (
+          <div className="p-3.5 rounded-2xl bg-[#0a0a12]/90 border border-white/10 space-y-2.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+              <span className="font-bold text-zinc-200 flex items-center gap-1.5">
+                <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                <span>
+                  Interactive 20-Scene Lip-Sync ⇄ Just-Animate Takeover Matrix (Click any scene to flip its Toggle &amp; Take Over Event + Copy Instruction):
+                </span>
+              </span>
+              <span className="text-[11px] font-mono text-zinc-400">
+                ⚡ Clicking a scene pill toggles mode &amp; auto-copies the taken-over prompt
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2">
+              {chunks.map((c) => {
+                const isLip = c.syncMode === 'LIP-SYNC';
+                const isOverridden =
+                  c.geniusRecommendedEdition &&
+                  c.geniusRecommendedEdition !== c.activePromptEdition;
+                const cleanName = c.commensurateSceneLabel
+                  .replace(/^(?:Set\s+[AB]\s+#\d+\s*·\s*|Omni Scene\s+#\d+\s*·\s*|On-The-Fly Commensurate\s*·\s*)/i, '')
+                  .trim();
+
+                return (
+                  <button
+                    key={c.chunkIndex}
+                    type="button"
+                    onClick={() => handleToggleSingleChunkEdition(c)}
+                    title={`Click to Toggle Scene #${c.chunkCode} (${cleanName}) between 🎤 Lip-Sync and 🎬 Just Animate — takes over both the Render Event and Copy Instruction!`}
+                    className={`p-2 rounded-xl border text-left transition flex flex-col justify-between gap-1 cursor-pointer group ${
+                      isLip
+                        ? 'bg-cyan-950/35 hover:bg-cyan-900/50 border-cyan-500/40 text-cyan-100'
+                        : 'bg-amber-950/30 hover:bg-amber-900/45 border-amber-500/35 text-amber-100'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1 w-full">
+                      <span className="font-mono font-extrabold text-[11px] text-white">
+                        #{c.chunkCode}
+                      </span>
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wider ${
+                          isLip
+                            ? 'bg-cyan-500 text-black'
+                            : 'bg-amber-500 text-black'
+                        }`}
+                      >
+                        {isLip ? '🎤 LIP-SYNC' : `🎬 ANIMATE ${c.chunkCode}A`}
+                      </span>
+                    </div>
+
+                    <div className="text-[10px] font-semibold text-zinc-200 truncate w-full">
+                      {cleanName}
+                    </div>
+
+                    <div className="flex items-center justify-between gap-1 text-[9px] w-full pt-0.5 border-t border-white/8">
+                      <span className="text-zinc-400 truncate">
+                        {isOverridden ? (
+                          <span className="text-emerald-300 font-bold">⚡ Toggle Takeover</span>
+                        ) : (
+                          <span>🧠 Genius Auto</span>
+                        )}
+                      </span>
+                      <span className="text-zinc-300 group-hover:text-white font-bold">
+                        Flip ⇄
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Genius Summary Pills & Filter Tabs */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-white/10">
@@ -2168,12 +2332,25 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
               🎬 Just Animate (Action-Only) Active:{' '}
               {chunks.filter((c) => c.syncMode !== 'LIP-SYNC').length} Scenes
             </span>
-            <span className="px-3 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-mono text-[11px]">
-              Scene #05 Market Handshake:{' '}
-              {chunks.find((c) => c.chunkIndex === 5)?.syncMode === 'LIP-SYNC'
-                ? '🎤 Lip-Sync'
-                : '🎬 Just Animate (Action-Only 05A)'}
-            </span>
+            {chunks.find((c) => c.chunkIndex === 5) && (
+              <button
+                type="button"
+                onClick={() => {
+                  const sc5 = chunks.find((c) => c.chunkIndex === 5);
+                  if (sc5) handleToggleSingleChunkEdition(sc5);
+                }}
+                className="px-3 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 font-mono text-[11px] cursor-pointer transition flex items-center gap-1.5"
+                title="Click to flip Scene #05 Market Handshake between Just Animate and Lip-Sync Takeover"
+              >
+                <span>
+                  Scene #05 Market Handshake:{' '}
+                  {chunks.find((c) => c.chunkIndex === 5)?.syncMode === 'LIP-SYNC'
+                    ? '🎤 Lip-Sync (Override Takeover)'
+                    : '🎬 Just Animate (Action-Only 05A)'}
+                </span>
+                <span className="underline font-bold">Toggle ⇄</span>
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5 bg-[#0a0a12] p-1 rounded-xl border border-white/10">
@@ -2220,7 +2397,7 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
               </span>
             </h2>
             <p className="text-xs text-zinc-400">
-              Toggle any scene between <strong>🎤 Lip-Sync (Primary)</strong> and <strong>🎬 Just Animate (Action-Only)</strong>, copy either Omni prompt with 1 click, or swap/synthesize frames on the fly.
+              Toggle any scene between <strong>🎤 Lip-Sync (Primary)</strong> and <strong>🎬 Just Animate (Action-Only)</strong> — flipping the toggle immediately takes over both the <strong>Render Event</strong> and the <strong>Copy Instruction</strong>.
             </p>
           </div>
         </div>
@@ -2242,6 +2419,9 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
               const isLipSyncActive = chunk.syncMode === 'LIP-SYNC';
               const isGeniusAnimateRecommended =
                 chunk.geniusRecommendedEdition === 'ACTION_ONLY_ANIMATE';
+              const isUserOverrideTakeover =
+                chunk.geniusRecommendedEdition &&
+                chunk.geniusRecommendedEdition !== chunk.activePromptEdition;
 
               return (
                 <div
@@ -2253,7 +2433,7 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
                   }`}
                 >
                   <div className="space-y-3">
-                    {/* Top Bar: Chunk Code, Time Window, Active Mode Badge */}
+                    {/* Top Bar: Chunk Code, Time Window, Active Mode Toggle Pill */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span className="px-2 py-0.5 rounded-md bg-white/10 text-white font-mono font-bold text-xs shrink-0">
@@ -2264,15 +2444,19 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
                         </span>
                       </div>
 
-                      <span
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase shrink-0 ${
+                      <button
+                        type="button"
+                        onClick={() => handleToggleSingleChunkEdition(chunk)}
+                        title="Click to flip Lip-Sync ⇄ Just Animate Toggle (Takes over Event & Copy Instruction)"
+                        className={`px-2.5 py-0.5 rounded-md text-[10px] font-extrabold uppercase shrink-0 cursor-pointer transition flex items-center gap-1 ${
                           isLipSyncActive
-                            ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            ? 'bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40'
+                            : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40'
                         }`}
                       >
-                        {isLipSyncActive ? '🎤 LIP-SYNC' : '🎬 JUST ANIMATE'}
-                      </span>
+                        <span>{isLipSyncActive ? '🎤 LIP-SYNC' : '🎬 JUST ANIMATE'}</span>
+                        <span className="opacity-80">⇄</span>
+                      </button>
                     </div>
 
                     {/* Scene Title & Genius Contextual Recommendation Pill */}
@@ -2298,6 +2482,16 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
                           {chunk.geniusReason}
                         </p>
                       )}
+                      {isUserOverrideTakeover && (
+                        <div className="px-2 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-[10px] font-bold text-emerald-300 flex items-center justify-between">
+                          <span>
+                            ⚡ Toggle Override Active:{' '}
+                            {isLipSyncActive
+                              ? 'Lip-Sync took over Genius Animate!'
+                              : 'Just Animate took over Genius Lip-Sync!'}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {/* 2-Way Edition Switcher: Lip-Sync (Primary) vs Just Animate (Action-Only) */}
@@ -2315,7 +2509,7 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
                             ? 'bg-cyan-500 text-black shadow'
                             : 'text-zinc-400 hover:text-white'
                         }`}
-                        title="Use Primary Omni Prompt (Bar-by-Bar Lip-Sync Singing Version)"
+                        title="Switch to Lip-Sync (Primary) — takes over Lip-Sync Event & Copy Instruction"
                       >
                         <span>🎤 Lip-Sync (Primary)</span>
                         {chunk.geniusRecommendedEdition === 'PRIMARY_LIPSYNC' && (
@@ -2336,7 +2530,7 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
                             ? 'bg-amber-500 text-black shadow'
                             : 'text-zinc-400 hover:text-white'
                         }`}
-                        title="Use Action-Only Omni Prompt (Just Animate / Non-Singing Story Continuity)"
+                        title="Switch to Just Animate (Action-Only) — takes over Animate Event & Copy Instruction"
                       >
                         <span>🎬 Just Animate ({chunk.chunkCode}A)</span>
                         {chunk.geniusRecommendedEdition === 'ACTION_ONLY_ANIMATE' && (
@@ -2413,7 +2607,7 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
                         )}
 
                         <div className="flex items-center justify-between text-[10px] text-zinc-400">
-                          <span>Bar-by-Bar Sung Lyric Cue:</span>
+                          <span>Active Lip-Sync Lyric Cue (Taken Over):</span>
                           <span className="font-mono text-cyan-300">
                             Vocal Energy: {Math.round(chunk.vocalEnergyScore * 100)}%
                           </span>
@@ -2437,7 +2631,7 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
                     ) : (
                       <div className="p-2.5 rounded-xl bg-amber-950/20 border border-amber-500/30 space-y-1">
                         <div className="flex items-center justify-between text-[10px] font-bold text-amber-300">
-                          <span>🎬 Action-Only Story Direction (Scene {chunk.chunkCode}A)</span>
+                          <span>🎬 Active Just-Animate Direction (Scene {chunk.chunkCode}A)</span>
                           <span className="font-mono">NO LIP-SYNC</span>
                         </div>
                         <p className="text-[11px] text-zinc-300 leading-relaxed line-clamp-3">
@@ -2447,7 +2641,40 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
                       </div>
                     )}
 
-                    {/* 1-Click Copy Omni Prompts Bar (Matches HTML Guide Buttons!) */}
+                    {/* Master Active Instruction Copy Button (Automatically Taken Over by Toggle!) */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleCopyPromptText(
+                          chunk.prompt,
+                          `takeover-${chunk.chunkIndex}`
+                        )
+                      }
+                      className={`w-full py-2 px-3 rounded-xl text-[11px] font-extrabold flex items-center justify-center gap-1.5 border transition cursor-pointer ${
+                        isLipSyncActive
+                          ? 'bg-cyan-500/20 hover:bg-cyan-500/30 border-cyan-400/50 text-cyan-100'
+                          : 'bg-amber-500/20 hover:bg-amber-500/30 border-amber-400/50 text-amber-100'
+                      }`}
+                      title="Copies the active instruction currently taken over by the Lip-Sync / Just Animate toggle"
+                    >
+                      {copiedSceneKey === `takeover-${chunk.chunkIndex}` ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>
+                            Copied Active {isLipSyncActive ? 'Lip-Sync' : `Just-Animate (${chunk.chunkCode}A)`} Instruction!
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>
+                            📋 Copy Active {isLipSyncActive ? '🎤 Lip-Sync' : `🎬 Just-Animate (${chunk.chunkCode}A)`} Instruction
+                          </span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Secondary 1-Click Copy Omni Prompts Bar (Both Editions Always Accessible) */}
                     <div className="grid grid-cols-2 gap-1.5">
                       <button
                         type="button"
@@ -2457,7 +2684,7 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
                             `primary-${chunk.chunkIndex}`
                           )
                         }
-                        className="py-1.5 px-2 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/25 text-cyan-200 text-[10px] font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
+                        className="py-1 px-2 rounded-lg bg-white/4 hover:bg-cyan-500/15 border border-white/10 text-zinc-300 hover:text-cyan-200 text-[10px] font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
                         title="Copy Primary Omni Prompt (Bar-by-Bar Lip-Sync Version)"
                       >
                         {copiedSceneKey === `primary-${chunk.chunkIndex}` ? (
@@ -2468,7 +2695,7 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
                         ) : (
                           <>
                             <Copy className="w-3 h-3" />
-                            <span>Copy Primary (Lip-Sync)</span>
+                            <span>Primary (Lip-Sync)</span>
                           </>
                         )}
                       </button>
@@ -2481,7 +2708,7 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
                             `action-${chunk.chunkIndex}`
                           )
                         }
-                        className="py-1.5 px-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/25 text-amber-200 text-[10px] font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
+                        className="py-1 px-2 rounded-lg bg-white/4 hover:bg-amber-500/15 border border-white/10 text-zinc-300 hover:text-amber-200 text-[10px] font-semibold flex items-center justify-center gap-1 transition cursor-pointer"
                         title="Copy Action-Only Omni Prompt (Just Animate / Non-Singing Version)"
                       >
                         {copiedSceneKey === `action-${chunk.chunkIndex}` ? (
@@ -2492,109 +2719,121 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
                         ) : (
                           <>
                             <Copy className="w-3 h-3" />
-                            <span>Copy Action (Animate)</span>
+                            <span>Action ({chunk.chunkCode}A)</span>
                           </>
                         )}
                       </button>
                     </div>
                   </div>
 
-                {/* Bottom Controls: Camera Motion + Frame Actions + Single Chunk Render */}
-                <div className="pt-2 border-t border-white/6 space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <select
-                      value={chunk.cameraMovement}
-                      onChange={(e) => {
-                        const cam = e.target.value as CameraMotionPreset;
-                        setChunks((prev) =>
-                          prev.map((c) =>
-                            c.chunkIndex === chunk.chunkIndex
-                              ? { ...c, cameraMovement: cam }
-                              : c
-                          )
-                        );
-                      }}
-                      className="bg-[#0b0b12] border border-white/10 rounded-lg px-2 py-1 text-[11px] text-zinc-300 focus:outline-none"
-                    >
-                      <option value="push_in">Push-In</option>
-                      <option value="slow_pan">Slow Pan</option>
-                      <option value="handheld_cinema">Handheld</option>
-                      <option value="drone_pull_back">Pull-Back</option>
-                      <option value="orbital_spin">Orbital</option>
-                      <option value="macro_dof">Macro DOF</option>
-                    </select>
-
-                    <div className="flex items-center gap-1">
-                      <label
-                        className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] font-semibold text-zinc-300 border border-white/10 cursor-pointer"
-                        title="Upload custom image for this chunk"
-                      >
-                        Swap Img
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) =>
-                            handleReplaceSingleChunkImage(
-                              chunk.chunkIndex,
-                              e.target.files?.[0]
+                  {/* Bottom Controls: Camera Motion + Frame Actions + Single Chunk Render (Taken Over by Toggle!) */}
+                  <div className="pt-2 border-t border-white/6 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <select
+                        value={chunk.cameraMovement}
+                        onChange={(e) => {
+                          const cam = e.target.value as CameraMotionPreset;
+                          setChunks((prev) =>
+                            prev.map((c) =>
+                              c.chunkIndex === chunk.chunkIndex
+                                ? { ...c, cameraMovement: cam }
+                                : c
                             )
+                          );
+                        }}
+                        className="bg-[#0b0b12] border border-white/10 rounded-lg px-2 py-1 text-[11px] text-zinc-300 focus:outline-none"
+                      >
+                        <option value="push_in">Push-In</option>
+                        <option value="slow_pan">Slow Pan</option>
+                        <option value="handheld_cinema">Handheld</option>
+                        <option value="drone_pull_back">Pull-Back</option>
+                        <option value="orbital_spin">Orbital</option>
+                        <option value="macro_dof">Macro DOF</option>
+                      </select>
+
+                      <div className="flex items-center gap-1">
+                        <label
+                          className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] font-semibold text-zinc-300 border border-white/10 cursor-pointer"
+                          title="Upload custom image for this chunk"
+                        >
+                          Swap Img
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) =>
+                              handleReplaceSingleChunkImage(
+                                chunk.chunkIndex,
+                                e.target.files?.[0]
+                              )
+                            }
+                            className="hidden"
+                          />
+                        </label>
+
+                        <button
+                          type="button"
+                          disabled={chunk.status === 'synthesizing_frame'}
+                          onClick={() =>
+                            void handleRegenerateSingleChunkFrame(chunk.chunkIndex, false)
                           }
-                          className="hidden"
-                        />
-                      </label>
+                          className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-[10px] font-semibold text-amber-300 border border-amber-500/30 cursor-pointer disabled:opacity-40"
+                          title="Synthesize a new commensurate frame on the fly"
+                        >
+                          ✨ On-Fly Frame
+                        </button>
 
-                      <button
-                        type="button"
-                        disabled={chunk.status === 'synthesizing_frame'}
-                        onClick={() =>
-                          void handleRegenerateSingleChunkFrame(chunk.chunkIndex, false)
-                        }
-                        className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-[10px] font-semibold text-amber-300 border border-amber-500/30 cursor-pointer disabled:opacity-40"
-                        title="Synthesize a new commensurate frame on the fly"
-                      >
-                        ✨ On-Fly Frame
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={chunk.status === 'synthesizing_frame'}
-                        onClick={() =>
-                          void handleRegenerateSingleChunkFrame(chunk.chunkIndex, true)
-                        }
-                        className="px-2 py-1 rounded-lg bg-violet-500/15 hover:bg-violet-500/25 text-[10px] font-semibold text-violet-300 border border-violet-500/30 cursor-pointer disabled:opacity-40"
-                        title="Generate frame with Cloud AI (FLUX / CogView)"
-                      >
-                        🎨 AI
-                      </button>
+                        <button
+                          type="button"
+                          disabled={chunk.status === 'synthesizing_frame'}
+                          onClick={() =>
+                            void handleRegenerateSingleChunkFrame(chunk.chunkIndex, true)
+                          }
+                          className="px-2 py-1 rounded-lg bg-violet-500/15 hover:bg-violet-500/25 text-[10px] font-semibold text-violet-300 border border-violet-500/30 cursor-pointer disabled:opacity-40"
+                          title="Generate frame with Cloud AI (FLUX / CogView)"
+                        >
+                          🎨 AI
+                        </button>
+                      </div>
                     </div>
-                  </div>
 
-                  <button
-                    type="button"
-                    disabled={chunk.status === 'rendering_lipsync'}
-                    onClick={() => void handleRenderSingleChunkVideo(chunk.chunkIndex)}
-                    className="w-full py-1.5 px-3 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-200 font-bold text-[11px] flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-50"
-                  >
-                    {chunk.status === 'rendering_lipsync' ? (
-                      <>
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        <span>Syncing Chunk ({chunk.progressPercent || 15}%)...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Video className="w-3 h-3" />
-                        <span>
-                          {chunk.generatedVideoUrl
-                            ? 'Re-Render Chunk Lip-Sync'
-                            : 'Render Chunk Lip-Sync Video'}
-                        </span>
-                      </>
-                    )}
-                  </button>
+                    <button
+                      type="button"
+                      disabled={chunk.status === 'rendering_lipsync'}
+                      onClick={() => void handleRenderSingleChunkVideo(chunk.chunkIndex)}
+                      className={`w-full py-1.5 px-3 rounded-lg font-bold text-[11px] flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-50 ${
+                        isLipSyncActive
+                          ? 'bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-200'
+                          : 'bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-200'
+                      }`}
+                    >
+                      {chunk.status === 'rendering_lipsync' ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <span>
+                            {isLipSyncActive
+                              ? `Syncing Lip-Sync (${chunk.progressPercent || 15}%)...`
+                              : `Animating Scene ${chunk.chunkCode}A (${chunk.progressPercent || 15}%)...`}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <Video className="w-3 h-3" />
+                          <span>
+                            {chunk.generatedVideoUrl
+                              ? isLipSyncActive
+                                ? '🎤 Re-Render Lip-Sync Video'
+                                : `🎬 Re-Render Just-Animate Video (${chunk.chunkCode}A)`
+                              : isLipSyncActive
+                                ? '🎤 Render Chunk Lip-Sync Video'
+                                : `🎬 Render Just-Animate Video (${chunk.chunkCode}A - No Lip-Sync)`}
+                          </span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
         </div>
       </div>
     </div>

@@ -359,20 +359,33 @@ IMPORTANT NEW SYNC RULES:
 `;
 
   const sceneBlocks = filteredScenes.map((scene) => {
+    const isActionTakeover =
+      scene.activePromptEdition === 'ACTION_ONLY_ANIMATE' ||
+      scene.syncMode === 'NO LIP-SYNC';
+    const activeTakenOverPrompt = isActionTakeover
+      ? scene.actionOnlyOmniPrompt
+      : scene.primaryOmniPrompt;
+
     return `============================================================
 SCENE ${scene.sceneCode} - ${scene.shortName.toUpperCase()}
 IMAGE: ${scene.imageFilename}
 SONG EDIT WINDOW: ${scene.songWindowFormatted}
 PRIMARY MODE: ${scene.syncMode}
+ACTIVE TOGGLE TAKEOVER EDITION: ${isActionTakeover ? 'JUST ANIMATE (ACTION-ONLY / NO LIP-SYNC)' : 'LIP-SYNC (BAR-BY-BAR PRIMARY)'}
+GENIUS SETTING CATEGORY: ${scene.geniusSettingCategory || 'Contextual Scene'}
 NARRATIVE ARC: ${scene.narrativeArcRole}
-EXACT WORDS TO LIP-SYNC: ${scene.exactLyrics}
+EXACT WORDS TO LIP-SYNC: ${isActionTakeover ? 'NONE - Action-Only Takeover (Keep mouth relaxed and closed)' : scene.exactLyrics}
 REPETITION COUNT: ${scene.repetitionCount}
 
-========== COPY THIS INTO OMNI - PRIMARY ==========
+========== COPY THIS INTO OMNI - ACTIVE TAKEN-OVER INSTRUCTION ==========
+${activeTakenOverPrompt}
+========== END ACTIVE TAKEN-OVER OMNI PROMPT ==========
+
+========== COPY THIS INTO OMNI - PRIMARY (LIP-SYNC EDITION) ==========
 ${scene.primaryOmniPrompt}
 ========== END PRIMARY OMNI PROMPT ==========
 
-========== COPY THIS INTO OMNI - ACTION ONLY ==========
+========== COPY THIS INTO OMNI - ACTION ONLY (JUST ANIMATE EDITION) ==========
 ${scene.actionOnlyOmniPrompt}
 ========== END ACTION-ONLY OMNI PROMPT ==========
 

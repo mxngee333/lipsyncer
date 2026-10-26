@@ -387,4 +387,48 @@ describe('Full Song Video Mode: Audiospliter Chunking, Vocal DSP Lyric Sync & On
     expect(parsed?.scenes[0].endTimeSec).toBeCloseTo(37.1, 1);
     expect(parsed?.scenes[0].geniusRecommendedEdition).toBe('ACTION_ONLY_ANIMATE');
   });
+
+  it('should take over both Lip-Sync render event and Copy Instruction when toggling a Genius Action-Only scene (#05 Market Handshake) to PRIMARY_LIPSYNC and back', async () => {
+    const preset = getLordIAmGratefulOmniGuidePreset();
+    const demoWav = await generateDemoVocalWavBlob('Toggle takeover test', 40);
+    const result = await buildFullSongVideoChunks({
+      audioSource: demoWav,
+      songTitle: 'Lord I Am Grateful',
+      rawLyrics: preset.scenes.map((s) => s.cleanSungLyrics).join('\n'),
+      uploadedImageUrls: ['https://images.unsplash.com/photo-1516280440614-37939bbacd81?w=600'],
+      chunkMode: 'target_scene_count',
+      targetSceneCount: 20,
+      aspectRatio: '16:9',
+      selectedModelId: 'lipsyncer-dsp-60fps',
+      omniGuide: preset,
+      useGeniusEditionSelection: true
+    });
+
+    // Scene 05 (index 4) starts as ACTION_ONLY_ANIMATE / CINEMATIC-MOTION per Genius Market setting rule
+    const marketChunkInitial = result.chunks[4];
+    expect(marketChunkInitial.activePromptEdition).toBe('ACTION_ONLY_ANIMATE');
+    expect(marketChunkInitial.syncMode).toBe('CINEMATIC-MOTION');
+    expect(marketChunkInitial.prompt).toContain('NO SINGING. NO LIP-SYNC');
+
+    // User toggles Lip-Sync Takeover ON for Scene 05
+    const takenOverToLipSync = switchChunkPromptEdition(marketChunkInitial, 'PRIMARY_LIPSYNC');
+    expect(takenOverToLipSync.activePromptEdition).toBe('PRIMARY_LIPSYNC');
+    expect(takenOverToLipSync.syncMode).toBe('LIP-SYNC');
+    expect(takenOverToLipSync.prompt).toBe(marketChunkInitial.primaryOmniPrompt);
+    expect(takenOverToLipSync.prompt).toContain('SYNC MODE: LIP-SYNC');
+
+    // User toggles Scene 05 back to Just-Animate (Action-Only)
+    const takenOverToAnimate = switchChunkPromptEdition(takenOverToLipSync, 'ACTION_ONLY_ANIMATE');
+    expect(takenOverToAnimate.activePromptEdition).toBe('ACTION_ONLY_ANIMATE');
+    expect(takenOverToAnimate.syncMode).toBe('CINEMATIC-MOTION');
+    expect(takenOverToAnimate.prompt).toBe(marketChunkInitial.actionOnlyOmniPrompt);
+
+    // Even Scene 01 (originally instrumental intro in guide) takes over as LIP-SYNC when user toggles Lip-Sync ON
+    const introChunkInitial = result.chunks[0];
+    expect(introChunkInitial.activePromptEdition).toBe('ACTION_ONLY_ANIMATE');
+    const introTakenOverToLipSync = switchChunkPromptEdition(introChunkInitial, 'PRIMARY_LIPSYNC');
+    expect(introTakenOverToLipSync.activePromptEdition).toBe('PRIMARY_LIPSYNC');
+    expect(introTakenOverToLipSync.syncMode).toBe('LIP-SYNC');
+    expect(introTakenOverToLipSync.prompt).toContain('SYNC MODE: LIP-SYNC');
+  });
 });
