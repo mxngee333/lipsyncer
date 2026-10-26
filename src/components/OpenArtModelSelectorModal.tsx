@@ -18,6 +18,7 @@ import {
 import { LipSyncModelSpec, ModelFeatureTag } from '../types';
 import {
   LIPSYNC_MODELS,
+  OPENART_OFFICIAL_MODELS,
   MODEL_PROVIDERS_LIST,
   MODEL_FEATURES_LIST
 } from '../data/modelCatalog';
@@ -80,6 +81,7 @@ export const OpenArtModelSelectorModal: React.FC<OpenArtModelSelectorModalProps>
   onOpenArena,
   onOpenDirector
 }) => {
+  const [viewMode, setViewMode] = useState<'openart' | 'all'>('openart');
   const [modalityFilter, setModalityFilter] = useState<ModalityQuickFilter>('all');
   const [selectedProvider, setSelectedProvider] = useState<string>('All providers');
   const [selectedFeature, setSelectedFeature] = useState<string>('All features');
@@ -202,20 +204,48 @@ export const OpenArtModelSelectorModal: React.FC<OpenArtModelSelectorModalProps>
       className={
         embedded
           ? 'w-full max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6'
-          : 'relative w-full max-w-5xl max-h-[90vh] flex flex-col rounded-3xl bg-[#111116] border border-white/10 shadow-[0_32px_90px_rgba(0,0,0,0.85)] overflow-hidden'
+          : `relative w-full ${
+              viewMode === 'openart' ? 'max-w-2xl' : 'max-w-5xl'
+            } max-h-[90vh] flex flex-col rounded-3xl bg-[#111116] border border-white/10 shadow-[0_32px_90px_rgba(0,0,0,0.85)] overflow-hidden transition-all duration-200`
       }
     >
-      {/* Modal Header (only shown in modal mode) */}
+      {/* Modal Header */}
       {!embedded && (
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/8 bg-[#15151c] shrink-0">
-          <div className="flex items-center gap-2.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_10px_#34d399]" />
-            <h2 className="text-base font-bold text-white tracking-tight">
-              Select Lip-Sync &amp; Audio-to-Video Model
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/8 bg-[#14151c] shrink-0">
+          <div className="flex items-center gap-3.5">
+            <h2 className="text-xl font-bold text-white tracking-tight">
+              Model
             </h2>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-white/8 text-zinc-300 font-medium">
-              {LIPSYNC_MODELS.length} Engines Ready
-            </span>
+            <div className="flex items-center gap-1 p-0.5 bg-black/40 rounded-xl border border-white/8">
+              <button
+                type="button"
+                onClick={() => setViewMode('openart')}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                  viewMode === 'openart'
+                    ? 'bg-white text-black shadow-sm'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <span>OpenArt Lip Sync</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 font-bold">
+                  {OPENART_OFFICIAL_MODELS.length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('all')}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                  viewMode === 'all'
+                    ? 'bg-white text-black shadow-sm'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <span>All Models</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/10 text-zinc-300">
+                  {LIPSYNC_MODELS.length}
+                </span>
+              </button>
+            </div>
           </div>
           {onClose && (
             <button
@@ -230,9 +260,63 @@ export const OpenArtModelSelectorModal: React.FC<OpenArtModelSelectorModalProps>
         </div>
       )}
 
-      {/* Scrollable Inner Container */}
-      <div className={embedded ? 'space-y-6' : 'p-5 sm:p-6 overflow-y-auto space-y-6'}>
-        {/* Top 3 Featured Promo Cards (OpenArt Visual Deck) */}
+      {/* Mode 1: Exact OpenArt Official 6-Model Suite */}
+      {viewMode === 'openart' ? (
+        <div className="p-4 sm:p-5 overflow-y-auto space-y-2 max-h-[75vh]">
+          {OPENART_OFFICIAL_MODELS.map((model) => {
+            const isSelected = selectedModelId === model.id;
+            return (
+              <div
+                key={model.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => handleChooseModel(model)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleChooseModel(model);
+                  }
+                }}
+                className={`group flex items-center justify-between gap-3.5 p-3.5 rounded-2xl cursor-pointer transition-all ${
+                  isSelected
+                    ? 'bg-[#252836] border border-white/15 shadow-[0_4px_20px_rgba(0,0,0,0.5)] ring-1 ring-white/10'
+                    : 'hover:bg-white/[0.04] border border-transparent'
+                }`}
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <ModelBrandIcon provider={model.provider} modelId={model.id} size="md" />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[15px] font-bold text-white tracking-tight">
+                        {model.name}
+                      </span>
+                      {model.badges.map((badge) => (
+                        <span
+                          key={`${model.id}-${badge.label}`}
+                          className="bg-emerald-500/20 text-emerald-400 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-emerald-500/30 leading-none"
+                        >
+                          {badge.label}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-xs sm:text-[13px] text-zinc-400 leading-relaxed mt-0.5">
+                      {model.description}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="hidden sm:flex items-center gap-2 shrink-0">
+                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-white/5 text-zinc-400 border border-white/5">
+                    {model.supportsVideoInput ? 'Video + Audio' : 'Image + Audio'}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className={embedded ? 'space-y-6' : 'p-5 sm:p-6 overflow-y-auto space-y-6'}>
+          {/* Top 3 Featured Promo Cards (OpenArt Visual Deck) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
           {/* Promo 1: Which model performs best */}
           <button
@@ -606,6 +690,7 @@ export const OpenArtModelSelectorModal: React.FC<OpenArtModelSelectorModalProps>
           )}
         </div>
       </div>
+      )}
     </div>
   );
 

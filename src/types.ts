@@ -17,7 +17,10 @@ export type ModelProvider =
   | 'HappyHorse'
   | 'Alibaba Wan'
   | 'Google DeepMind'
-  | 'LipSyncer DSP';
+  | 'LipSyncer DSP'
+  | 'Creatify'
+  | 'OpenArt'
+  | 'Hedra';
 
 export type ModelFeatureTag =
   | 'Audio'
@@ -48,6 +51,7 @@ export interface LipSyncModelSpec {
   supportsImageInput: boolean;
   supportsEndFrame: boolean;
   supportsReference: boolean;
+  isOpenArtOfficial?: boolean;
   creditCost: number;
   arenaElo: number;
   arenaRank: number;

@@ -14,10 +14,10 @@ const CANONICAL_ROUTES = [
     changefreq: 'weekly',
     title: 'LipSyncer AI — Multi-Model Video & Image Lip-Sync Studio + Omni Music Video Director',
     description:
-      'Lip-sync any video or portrait image with audio using LTX 2.5 Audio-to-Video, ByteDance LatentSync 1.5, Seedance 2.0 Mini, Kling 3.0 Omni, PixVerse V6, Wan 2.7, Veo 3.1, and 20-Scene Music Video Storyboard Director.',
+      'Lip-sync any video or portrait image with audio using Creatify Aurora, OpenArt Lip Sync, Kling Avatar, Kling Lipsync V1, Byte Plus Omni Human 1.5, Hedra (fast), LTX 2.5, ByteDance LatentSync 1.5, Seedance 2.0, Kling 3.0, PixVerse, Wan 2.7, Veo 3.1, and 20-Scene Storyboard Director.',
     heading: 'Multi-Model AI Lip-Sync & Music Video Production Studio',
     bodyHtml: `
-      <p>LipSyncer AI is an OpenArt-class multi-model lip-sync studio supporting both <strong>Video + Audio neural mouth re-synchronization</strong> and <strong>Portrait Image + Audio talking and singing video generation</strong>. Choose across 11 specialized models including LTX 2.5 Audio-to-Video, ByteDance LatentSync 1.5, Seedance 2.0 Mini, Kling 3.0 Omni, PixVerse C1 &amp; V6, HappyHorse 1.1, Alibaba Wan 2.7, Veo 3.1 4K, and our instant 60fps browser vocal formant viseme engine.</p>
+      <p>LipSyncer AI is an OpenArt-class multi-model lip-sync studio supporting both <strong>Video + Audio neural mouth re-synchronization</strong> and <strong>Portrait Image + Audio talking and singing video generation</strong>. Choose across 19 specialized models including the full OpenArt official suite (Creatify Aurora, OpenArt Lip Sync, Kling Avatar, Kling Lipsync V1, Byte Plus Omni Human 1.5, Hedra fast) plus LTX 2.5 Audio-to-Video, ByteDance LatentSync 1.5, Seedance 2.0 Mini, Kling 3.0 Omni, PixVerse C1 &amp; V6, HappyHorse 1.1, Alibaba Wan 2.7, Veo 3.1 4K, and our instant 60fps browser vocal formant viseme engine.</p>
       <p>Direct full-length songs with our integrated <strong>20-Scene Music Video Storyboard &amp; Omni Production Director</strong> featuring Expert Song DNA BPM/Groove analysis, exact lyric-to-time lip-sync locks, zero visible on-screen text enforcement, Folder A &amp; Folder B ZIP packaging, and Dual Offline HTML Navigators.</p>
     `
   },
@@ -25,12 +25,12 @@ const CANONICAL_ROUTES = [
     route: '/models/',
     priority: '0.9',
     changefreq: 'weekly',
-    title: 'AI Lip-Sync Models Directory — LTX 2.5, LatentSync 1.5, Seedance 2.0, Kling 3.0, Wan 2.7 | LipSyncer',
+    title: 'AI Lip-Sync Models Directory — OpenArt Lip Sync, Creatify Aurora, Kling Avatar, Kling Lipsync V1, Byte Plus, Hedra, LTX 2.5 | LipSyncer',
     description:
-      'Compare 11 audio-to-video and video-to-audio AI lip-sync models side-by-side: LTX 2.5, LatentSync 1.5, Seedance 2.0 Mini, Kling 3.0 Omni, PixVerse V6, HappyHorse 1.1, Wan 2.7, and Veo 3.1.',
+      'Compare 19 audio-to-video and video-to-audio AI lip-sync models side-by-side: Creatify Aurora, OpenArt Lip Sync, Kling Avatar, Kling Lipsync V1, Byte Plus Omni Human 1.5, Hedra (fast), LTX 2.5, LatentSync 1.5, Seedance 2.0 Mini, Kling 3.0 Omni, PixVerse V6, HappyHorse 1.1, Wan 2.7, and Veo 3.1.',
     heading: 'Supported AI Lip-Sync & Audio-to-Video Models',
     bodyHtml: `
-      <p>Explore and filter LipSyncer AI models by provider (Lightricks, ByteDance, Kling AI, PixVerse, HappyHorse, Alibaba Wan, Google DeepMind, LipSyncer DSP), resolution (480p to 4K), frame control (Start/End frames, multimodal reference), and input media (Video + Audio or Portrait + Audio).</p>
+      <p>Explore and filter LipSyncer AI models by provider (OpenArt, Creatify, Kling AI, ByteDance, Hedra, Lightricks, PixVerse, HappyHorse, Alibaba Wan, Google DeepMind, LipSyncer DSP), resolution (480p to 4K), frame control (Start/End frames, multimodal reference), and input media (Video + Audio or Portrait + Audio).</p>
     `
   },
   {

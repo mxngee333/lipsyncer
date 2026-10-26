@@ -18,8 +18,8 @@ import {
 } from '../falAiService';
 
 describe('LipSyncer AI Multi-Model Catalog Tests', () => {
-  it('should verify catalog has 13 specialized AI lip-sync models including Fal.ai cloud engines', () => {
-    expect(LIPSYNC_MODELS.length).toBe(13);
+  it('should verify catalog has 19 specialized AI lip-sync models including OpenArt official fleet and Fal.ai cloud engines', () => {
+    expect(LIPSYNC_MODELS.length).toBe(19);
   });
 
   it('should verify all models have valid providers and features', () => {

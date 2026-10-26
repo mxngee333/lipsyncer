@@ -56,6 +56,17 @@ export const ModelBrandIcon: React.FC<ModelBrandIconProps> = ({
         );
 
       case 'ByteDance': {
+        if (modelId === 'byteplus-omnihuman-1-5') {
+          return (
+            <svg viewBox="0 0 28 28" fill="none" className={iconScaleClass} aria-hidden="true">
+              <g stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
+                <path d="M14 5L22 9.5L14 14L6 9.5L14 5Z" fill="#FFFFFF" fillOpacity="0.12" />
+                <path d="M6 14L14 18.5L22 14" />
+                <path d="M6 18.5L14 23L22 18.5" />
+              </g>
+            </svg>
+          );
+        }
         const isLatentSync = modelId === 'latentsync-1-5';
         return (
           <svg viewBox="0 0 28 28" fill="none" className={iconScaleClass} aria-hidden="true">
@@ -203,6 +214,52 @@ export const ModelBrandIcon: React.FC<ModelBrandIconProps> = ({
               fill="#EA4335"
               d="M12 5.86c1.5 0 2.85.52 3.91 1.53l2.93-2.93C17.06 2.8 14.75 1.8 12 1.8A10.19 10.19 0 0 0 2.87 7.43l3.41 2.64c.81-2.41 3.06-4.21 5.72-4.21Z"
             />
+          </svg>
+        );
+
+      case 'Creatify':
+        return (
+          <svg viewBox="0 0 28 28" fill="none" className={iconScaleClass} aria-hidden="true">
+            <defs>
+              <linearGradient id={`creatify-${uid}`} x1="3" y1="5" x2="25" y2="23" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#38bdf8" />
+                <stop offset="50%" stopColor="#6366f1" />
+                <stop offset="100%" stopColor="#a855f7" />
+              </linearGradient>
+            </defs>
+            {/* Speed wing dash */}
+            <path d="M4 14.5H10.5L8.5 18.5H4L5.5 14.5Z" fill={`url(#creatify-${uid})`} opacity="0.8" />
+            {/* Primary double chevron speed arrow */}
+            <path d="M9.5 8L17.5 14L9.5 20L13 14L9.5 8Z" fill={`url(#creatify-${uid})`} />
+            <path d="M15.5 8L23.5 14L15.5 20L19 14L15.5 8Z" fill={`url(#creatify-${uid})`} />
+          </svg>
+        );
+
+      case 'OpenArt':
+        return (
+          <svg viewBox="0 0 28 28" fill="none" className={iconScaleClass} aria-hidden="true">
+            {/* Official OpenArt clean infinity loop */}
+            <path
+              d="M9 9.5C6.5 9.5 4.5 11.5 4.5 14C4.5 16.5 6.5 18.5 9 18.5C11.5 18.5 13.1 16.6 14 15.2C14.9 16.6 16.5 18.5 19 18.5C21.5 18.5 23.5 16.5 23.5 14C23.5 11.5 21.5 9.5 19 9.5C16.5 9.5 14.9 11.4 14 12.8C13.1 11.4 11.5 9.5 9 9.5ZM9 11.5C10.5 11.5 11.8 12.6 12.8 14C11.8 15.4 10.5 16.5 9 16.5C7.6 16.5 6.5 15.4 6.5 14C6.5 12.6 7.6 11.5 9 11.5ZM19 11.5C20.4 11.5 21.5 12.6 21.5 14C21.5 15.4 20.4 16.5 19 16.5C17.5 16.5 16.2 15.4 15.2 14C16.2 12.6 17.5 11.5 19 11.5Z"
+              fill="#FFFFFF"
+            />
+          </svg>
+        );
+
+      case 'Hedra':
+        return (
+          <svg viewBox="0 0 28 28" fill="none" className={iconScaleClass} aria-hidden="true">
+            {/* Hedra signature 8-petal geometric snowflake burst */}
+            <g fill="#FFFFFF">
+              <rect x="12.5" y="4" width="3" height="7.5" rx="1.5" />
+              <rect x="12.5" y="16.5" width="3" height="7.5" rx="1.5" />
+              <rect x="4" y="12.5" width="7.5" height="3" rx="1.5" />
+              <rect x="16.5" y="12.5" width="7.5" height="3" rx="1.5" />
+              <rect x="12.5" y="4" width="3" height="7.5" rx="1.5" transform="rotate(45 14 14)" />
+              <rect x="12.5" y="16.5" width="3" height="7.5" rx="1.5" transform="rotate(45 14 14)" />
+              <rect x="4" y="12.5" width="7.5" height="3" rx="1.5" transform="rotate(45 14 14)" />
+              <rect x="16.5" y="12.5" width="7.5" height="3" rx="1.5" transform="rotate(45 14 14)" />
+            </g>
           </svg>
         );
 

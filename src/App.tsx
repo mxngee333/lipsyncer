@@ -145,7 +145,7 @@ export const App: React.FC = () => {
 
   // Generation & Model State
   const [selectedModel, setSelectedModel] = useState<LipSyncModelSpec>(() => {
-    return LIPSYNC_MODELS.find((m) => m.id === 'seedance_2_0_mini') ?? LIPSYNC_MODELS[0];
+    return LIPSYNC_MODELS.find((m) => m.id === 'openart-lip-sync') ?? LIPSYNC_MODELS[0];
   });
   const [inputMode, setInputMode] = useState<InputMediaMode>('image_audio');
 
