@@ -19,7 +19,8 @@ import {
   EyeOff,
   BrainCircuit,
   Wand2,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Mic
 } from 'lucide-react';
 import {
   StoryboardDirectorProject,
@@ -1216,23 +1217,20 @@ export const StoryboardDirectorView: React.FC = () => {
       {project && (
         <div className="space-y-4">
           {/* Genius Contextual Scene Intelligence Bar */}
-          <div className="p-5 rounded-3xl bg-gradient-to-br from-violet-950/35 via-indigo-950/25 to-amber-950/20 border border-violet-500/30 space-y-4 overflow-hidden">
+          <div className="p-5 rounded-2xl bg-[#111118] border border-zinc-800/80 space-y-4 overflow-hidden">
             <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-violet-500/20 border border-violet-400/30 text-[11px] font-extrabold uppercase tracking-wider text-violet-200">
-                  <BrainCircuit className="w-3.5 h-3.5 text-violet-300" />
-                  <span>Genius Director Intelligence: Lip-Sync vs. Just Animate (Toggle Takeover)</span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-800 border border-zinc-700/60 text-[11px] font-medium text-zinc-300">
+                  <BrainCircuit className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Scene Performance Intelligence · Lip-Sync vs. Narrative Motion</span>
                 </span>
-                <span className="text-xs text-zinc-200 font-bold">
-                  🎤 {project.scenes.filter((s) => s.syncMode === 'LIP-SYNC').length} Lip-Sync •{' '}
-                  🎬 {project.scenes.filter((s) => s.syncMode === 'NO LIP-SYNC').length} Just Animate (Action-Only)
+                <span className="text-xs text-zinc-400 font-medium">
+                  Lip-Sync: {project.scenes.filter((s) => s.syncMode === 'LIP-SYNC').length} •{' '}
+                  Motion: {project.scenes.filter((s) => s.syncMode === 'NO LIP-SYNC').length}
                 </span>
               </div>
-              <p className="text-xs text-zinc-300 leading-relaxed">
-                Automatically routes B-roll &amp; social interaction settings (e.g., <strong className="text-amber-300">Market Handshake #05</strong>, Conference Room, Grocery Unpacking, Dinner, Bus) to <strong className="text-amber-300">Action-Only (No Lip-Sync)</strong>, while keeping performance &amp; worship scenes on <strong className="text-cyan-300">Primary Lip-Sync</strong>.{' '}
-                <span className="text-cyan-300 font-semibold">
-                  Flip any scene&apos;s toggle below to immediately take over both its Render Event and Active Copy Instruction!
-                </span>
+              <p className="text-xs text-zinc-400 leading-relaxed max-w-4xl">
+                Automatically routes ambient and social interaction settings (such as <strong className="text-zinc-200">#05 Market Handshake</strong>, Conference Room, Grocery Unpacking, Bus) to <strong className="text-zinc-200">Narrative Motion</strong> while performance scenes stay locked to <strong className="text-zinc-200">Lip-Sync</strong>. Toggling any scene instantly updates its mode and copy instruction.
               </p>
             </div>
 
@@ -1240,23 +1238,26 @@ export const StoryboardDirectorView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => handleApplyBulkEditionToBoard('GENIUS_AUTO')}
-                className="px-3.5 py-2 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 border border-violet-400/40 text-xs font-bold transition cursor-pointer"
+                className="px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-750 text-zinc-200 border border-zinc-700 text-xs font-medium flex items-center justify-center gap-1.5 transition cursor-pointer"
               >
-                🧠 Apply Genius Scene Mix (Auto)
+                <BrainCircuit className="w-3.5 h-3.5 text-sky-400" />
+                <span>Apply Recommended Mix</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleApplyBulkEditionToBoard('ALL_LIPSYNC')}
-                className="px-3.5 py-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-200 border border-cyan-500/30 text-xs font-semibold transition cursor-pointer"
+                className="px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-850 text-zinc-300 hover:text-white border border-zinc-800 hover:border-zinc-700 text-xs font-medium flex items-center justify-center gap-1.5 transition cursor-pointer"
               >
-                🎤 All Lip-Sync Takeover (Primary)
+                <Mic className="w-3.5 h-3.5 text-sky-400" />
+                <span>Set All Lip-Sync</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleApplyBulkEditionToBoard('ALL_ACTION_ONLY')}
-                className="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 border border-amber-500/30 text-xs font-semibold transition cursor-pointer"
+                className="px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-850 text-zinc-300 hover:text-white border border-zinc-800 hover:border-zinc-700 text-xs font-medium flex items-center justify-center gap-1.5 transition cursor-pointer"
               >
-                🎬 All Just Animate Takeover (Action-Only)
+                <Film className="w-3.5 h-3.5 text-amber-400" />
+                <span>Set All Narrative Motion</span>
               </button>
             </div>
 
@@ -1274,37 +1275,37 @@ export const StoryboardDirectorView: React.FC = () => {
                     key={sc.sceneCode}
                     type="button"
                     onClick={() => handleToggleSceneEdition(sc.sceneNumber)}
-                    title={`Click to Toggle Scene #${sc.sceneCode} (${sc.shortName}) between 🎤 Lip-Sync and 🎬 Just Animate — takes over Event + Copy Instruction`}
-                    className={`p-2 rounded-xl border text-left transition flex flex-col justify-between gap-1 cursor-pointer ${
-                      isLip
-                        ? 'bg-cyan-950/35 hover:bg-cyan-900/50 border-cyan-500/40 text-cyan-100'
-                        : 'bg-amber-950/30 hover:bg-amber-900/45 border-amber-500/35 text-amber-100'
-                    }`}
+                    title={`Click to toggle Scene #${sc.sceneCode} (${sc.shortName}) between Lip-Sync and Narrative Motion`}
+                    className="p-2.5 rounded-xl border text-left transition flex flex-col justify-between gap-1.5 cursor-pointer group bg-zinc-900/90 hover:bg-zinc-850 border-zinc-800 hover:border-zinc-700"
                   >
                     <div className="flex items-center justify-between gap-1 w-full">
-                      <span className="font-mono font-extrabold text-[11px] text-white">
+                      <span className="font-mono font-semibold text-[11px] text-zinc-200">
                         #{sc.sceneCode}
                       </span>
-                      <span
-                        className={`px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase ${
-                          isLip ? 'bg-cyan-500 text-black' : 'bg-amber-500 text-black'
-                        }`}
-                      >
-                        {isLip ? '🎤 LIP-SYNC' : `🎬 ANIMATE ${sc.sceneCode}A`}
-                      </span>
+                      {isLip ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-sky-500/15 text-sky-300 border border-sky-500/20">
+                          <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+                          Lip-Sync
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-amber-500/15 text-amber-300 border border-amber-500/20">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                          Motion
+                        </span>
+                      )}
                     </div>
-                    <div className="text-[10px] font-semibold text-zinc-200 truncate w-full">
+                    <div className="text-[10px] font-medium text-zinc-300 truncate w-full">
                       {sc.shortName}
                     </div>
-                    <div className="flex items-center justify-between text-[9px] w-full pt-0.5 border-t border-white/8">
-                      <span className="text-zinc-400 truncate">
+                    <div className="flex items-center justify-between text-[9px] w-full pt-1 border-t border-zinc-800/80">
+                      <span className="text-zinc-500 truncate">
                         {isOverridden ? (
-                          <span className="text-emerald-300 font-bold">⚡ Toggle Takeover</span>
+                          <span className="text-emerald-400 font-medium">Override</span>
                         ) : (
-                          <span>🧠 Genius Auto</span>
+                          <span>Auto</span>
                         )}
                       </span>
-                      <span className="text-zinc-300 font-bold">Flip ⇄</span>
+                      <span className="text-zinc-400 group-hover:text-zinc-200">Flip ⇄</span>
                     </div>
                   </button>
                 );
@@ -1393,84 +1394,89 @@ export const StoryboardDirectorView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleToggleSceneEdition(scene.sceneNumber)}
-                        title="Click to flip Lip-Sync ⇄ Just Animate Toggle (Takes over Event & Copy Instruction)"
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider cursor-pointer transition ${
+                        title="Click to toggle Lip-Sync vs Narrative Motion mode"
+                        className={`px-2 py-0.5 rounded text-[10px] font-medium cursor-pointer transition flex items-center gap-1 ${
                           scene.syncMode === 'LIP-SYNC'
-                            ? 'bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30'
-                            : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30'
+                            ? 'bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/20'
+                            : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/20'
                         }`}
                       >
-                        {scene.syncMode === 'LIP-SYNC' ? '🎤 LIP-SYNC ⇄' : '🎬 JUST ANIMATE ⇄'}
+                        {scene.syncMode === 'LIP-SYNC' ? (
+                          <>
+                            <Mic className="w-3 h-3 text-sky-400" />
+                            <span>Lip-Sync ⇄</span>
+                          </>
+                        ) : (
+                          <>
+                            <Film className="w-3 h-3 text-amber-400" />
+                            <span>Motion ⇄</span>
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>
 
                   {/* Genius Setting Category & 2-Way Edition Switcher */}
-                  <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 space-y-2">
+                  <div className="p-2.5 rounded-lg bg-zinc-950/70 border border-zinc-850 space-y-2">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-violet-300">
-                        🧠 {scene.geniusSettingCategory || 'Contextual Setting'}:{' '}
-                        <span className="text-zinc-300 font-normal">
+                      <span className="text-[10px] font-medium text-zinc-400">
+                        {scene.geniusSettingCategory || 'Setting'}:{' '}
+                        <span className="text-zinc-300">
                           {scene.geniusReason ||
                             (scene.syncMode === 'LIP-SYNC'
-                              ? 'Expressive bar-by-bar lip-sync performance'
-                              : 'Action-Only natural acting without singing')}
+                              ? 'Bar-by-bar lip-sync performance'
+                              : 'Natural story motion without singing')}
                         </span>
                       </span>
                       {isOverridden && (
-                        <span className="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/35 text-[9px] font-bold text-emerald-300">
-                          ⚡ Toggle Override Takeover Active
+                        <span className="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-[9px] font-medium text-emerald-400">
+                          Override Active
                         </span>
                       )}
                     </div>
-                    <div className="grid grid-cols-2 gap-1.5">
+                    <div className="grid grid-cols-2 gap-1 p-0.5 rounded-lg bg-zinc-900 border border-zinc-800">
                       <button
                         type="button"
                         onClick={() => handleSwitchSceneEdition(scene.sceneNumber, 'PRIMARY_LIPSYNC')}
-                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition cursor-pointer flex items-center justify-center gap-1 ${
+                        className={`px-2.5 py-1 rounded-md text-[10px] font-medium transition cursor-pointer flex items-center justify-center gap-1 ${
                           activeEdition === 'PRIMARY_LIPSYNC'
-                            ? 'bg-cyan-500/25 text-cyan-200 border border-cyan-400/50'
-                            : 'bg-white/5 text-zinc-400 hover:text-white border border-white/5'
+                            ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700/60'
+                            : 'text-zinc-400 hover:text-zinc-200'
                         }`}
                       >
-                        <span>🎤 Lip-Sync (Primary)</span>
-                        {scene.geniusRecommendedEdition === 'PRIMARY_LIPSYNC' && (
-                          <span className="text-[9px] px-1 rounded bg-cyan-400/20 text-cyan-300">Auto</span>
-                        )}
+                        <Mic className="w-3 h-3" />
+                        <span>Lip-Sync</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => handleSwitchSceneEdition(scene.sceneNumber, 'ACTION_ONLY_ANIMATE')}
-                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition cursor-pointer flex items-center justify-center gap-1 ${
+                        className={`px-2.5 py-1 rounded-md text-[10px] font-medium transition cursor-pointer flex items-center justify-center gap-1 ${
                           activeEdition === 'ACTION_ONLY_ANIMATE'
-                            ? 'bg-amber-500/25 text-amber-200 border border-amber-400/50'
-                            : 'bg-white/5 text-zinc-400 hover:text-white border border-white/5'
+                            ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700/60'
+                            : 'text-zinc-400 hover:text-zinc-200'
                         }`}
                       >
-                        <span>🎬 Just Animate ({scene.sceneCode}A)</span>
-                        {scene.geniusRecommendedEdition === 'ACTION_ONLY_ANIMATE' && (
-                          <span className="text-[9px] px-1 rounded bg-amber-400/20 text-amber-300">Auto</span>
-                        )}
+                        <Film className="w-3 h-3" />
+                        <span>Motion ({scene.sceneCode}A)</span>
                       </button>
                     </div>
                   </div>
 
                   {/* Media Preview Box */}
-                  <div className="aspect-video bg-black rounded-xl overflow-hidden border border-white/10 relative flex items-center justify-center">
+                  <div className="aspect-video bg-black rounded-lg overflow-hidden border border-zinc-800 relative flex items-center justify-center">
                     {scene.generatedVideoUrl ? (
                       <video src={scene.generatedVideoUrl} controls playsInline className="w-full h-full object-contain" />
                     ) : scene.generatedImageUrl ? (
                       <img src={scene.generatedImageUrl} alt={scene.shortName} className="w-full h-full object-cover" />
                     ) : (
                       <div className="text-center p-4 space-y-1">
-                        <EyeOff className="w-6 h-6 mx-auto text-zinc-600" />
-                        <p className="text-xs text-zinc-500 font-medium">No Keyframe Rendered Yet</p>
-                        <span className="text-[10px] text-zinc-600">ZERO on-screen text rule enforced</span>
+                        <EyeOff className="w-5 h-5 mx-auto text-zinc-600" />
+                        <p className="text-xs text-zinc-500 font-medium">No Keyframe Rendered</p>
                       </div>
                     )}
 
                     {scene.done && (
-                      <div className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-emerald-500/90 text-black font-bold text-[10px] flex items-center gap-1">
+                      <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/80 text-emerald-400 font-mono text-[9px] flex items-center gap-1 border border-emerald-500/30">
                         <CheckCircle2 className="w-3 h-3" />
                         <span>QC PASS</span>
                       </div>
@@ -1479,15 +1485,15 @@ export const StoryboardDirectorView: React.FC = () => {
 
                   {/* Lyrics / Narrative Block */}
                   <div className="text-xs space-y-1">
-                    <span className="text-zinc-500 font-semibold block">
+                    <span className="text-zinc-400 font-medium block text-[11px]">
                       {activeEdition === 'PRIMARY_LIPSYNC'
-                        ? 'Active Lip-Sync Lyric Cue (Taken Over):'
-                        : `Active Just-Animate Direction (Scene ${scene.sceneCode}A — No Singing):`}
+                        ? 'Active Lyric Cue:'
+                        : `Narrative Motion Cue (Scene ${scene.sceneCode}A):`}
                     </span>
-                    <p className="font-mono text-zinc-200 bg-[#0d0d14] p-2.5 rounded-lg border border-white/5">
+                    <p className="font-mono text-zinc-300 bg-zinc-950 p-2.5 rounded-lg border border-zinc-800 text-xs">
                       {activeEdition === 'PRIMARY_LIPSYNC'
                         ? scene.barByBarLyrics || scene.exactLyrics
-                        : `NO SINGING. NO LIP-SYNC. (${scene.exactLyrics})`}
+                        : `NO SINGING. (${scene.exactLyrics})`}
                     </p>
                   </div>
 
@@ -1495,48 +1501,44 @@ export const StoryboardDirectorView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleCopyText(activeTakenOverPrompt, `takeover_${scene.sceneCode}`)}
-                    className={`w-full py-2 px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 border transition cursor-pointer ${
-                      activeEdition === 'PRIMARY_LIPSYNC'
-                        ? 'bg-cyan-500/20 hover:bg-cyan-500/30 border-cyan-400/50 text-cyan-100'
-                        : 'bg-amber-500/20 hover:bg-amber-500/30 border-amber-400/50 text-amber-100'
-                    }`}
+                    className="w-full py-1.5 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 border transition cursor-pointer bg-zinc-800/90 hover:bg-zinc-750 text-zinc-200 border-zinc-750"
                   >
                     {copiedKey === `takeover_${scene.sceneCode}` ? (
                       <>
                         <Check className="w-3.5 h-3.5 text-emerald-400" />
                         <span>
-                          Copied Active {activeEdition === 'PRIMARY_LIPSYNC' ? 'Lip-Sync' : `Just-Animate (${scene.sceneCode}A)`} Instruction!
+                          Copied Active Instruction!
                         </span>
                       </>
                     ) : (
                       <>
-                        <Copy className="w-3.5 h-3.5" />
+                        <Copy className="w-3.5 h-3.5 text-zinc-400" />
                         <span>
-                          📋 Copy Active {activeEdition === 'PRIMARY_LIPSYNC' ? '🎤 Lip-Sync' : `🎬 Just-Animate (${scene.sceneCode}A)`} Instruction
+                          Copy Active Instruction ({activeEdition === 'PRIMARY_LIPSYNC' ? 'Lip-Sync' : `Motion ${scene.sceneCode}A`})
                         </span>
                       </>
                     )}
                   </button>
 
                   {/* Actions & Model Chooser */}
-                  <div className="pt-2 border-t border-white/5 flex items-center justify-between flex-wrap gap-2">
+                  <div className="pt-2 border-t border-zinc-800 flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         disabled={scene.isGeneratingImage}
                         onClick={() => handleGenerateSceneImage(scene.sceneNumber)}
-                        className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-semibold text-zinc-200 border border-white/10 transition cursor-pointer disabled:opacity-50"
+                        className="px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 text-xs font-medium text-zinc-300 border border-zinc-800 transition cursor-pointer disabled:opacity-50"
                       >
-                        {scene.isGeneratingImage ? 'Generating...' : scene.generatedImageUrl ? 'Regen Image' : 'Generate Image'}
+                        {scene.isGeneratingImage ? 'Generating...' : scene.generatedImageUrl ? 'Regen Frame' : 'Generate Frame'}
                       </button>
                       <button
                         type="button"
                         disabled={scene.isGeneratingVideo}
                         onClick={() => handleLipSyncScene(scene.sceneNumber)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition cursor-pointer disabled:opacity-50 flex items-center gap-1 ${
+                        className={`px-3 py-1 rounded-md text-xs font-medium transition cursor-pointer disabled:opacity-50 flex items-center gap-1.5 ${
                           activeEdition === 'ACTION_ONLY_ANIMATE'
-                            ? 'bg-amber-600 hover:bg-amber-500'
-                            : 'bg-cyan-600 hover:bg-cyan-500'
+                            ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/30'
+                            : 'bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-500/30'
                         }`}
                       >
                         <Video className="w-3 h-3" />
@@ -1544,8 +1546,8 @@ export const StoryboardDirectorView: React.FC = () => {
                           {scene.isGeneratingVideo
                             ? 'Rendering...'
                             : activeEdition === 'ACTION_ONLY_ANIMATE'
-                            ? `🎬 Animate Scene (${scene.sceneCode}A)`
-                            : '🎤 Lip-Sync Scene'}
+                            ? `Render Motion (${scene.sceneCode}A)`
+                            : 'Render Lip-Sync'}
                         </span>
                       </button>
                     </div>
@@ -1554,8 +1556,8 @@ export const StoryboardDirectorView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleCopyText(scene.primaryOmniPrompt, `prim_${scene.sceneCode}`)}
-                        className="px-2 py-1 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-[11px] font-semibold text-cyan-300 border border-cyan-500/25 transition cursor-pointer flex items-center gap-1"
-                        title="Copy Primary Omni Prompt (Lip-Sync Version)"
+                        className="px-2 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 text-[10px] font-medium text-zinc-400 hover:text-zinc-200 border border-zinc-800 transition cursor-pointer flex items-center gap-1"
+                        title="Copy Primary Omni Prompt"
                       >
                         {copiedKey === `prim_${scene.sceneCode}` ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                         <span>Primary</span>
@@ -1563,11 +1565,11 @@ export const StoryboardDirectorView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleCopyText(scene.actionOnlyOmniPrompt, `act_${scene.sceneCode}`)}
-                        className="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-[11px] font-semibold text-amber-300 border border-amber-500/25 transition cursor-pointer flex items-center gap-1"
-                        title="Copy Action-Only Omni Prompt (Just Animate / No singing)"
+                        className="px-2 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 text-[10px] font-medium text-zinc-400 hover:text-zinc-200 border border-zinc-800 transition cursor-pointer flex items-center gap-1"
+                        title="Copy Action-Only Omni Prompt"
                       >
                         {copiedKey === `act_${scene.sceneCode}` ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                        <span>Action-Only</span>
+                        <span>Motion</span>
                       </button>
                     </div>
                   </div>

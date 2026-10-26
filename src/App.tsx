@@ -579,29 +579,27 @@ export const App: React.FC = () => {
       {/* ========================================================================= */}
       {/* TOP HEADER / APP BAR                                                      */}
       {/* ========================================================================= */}
-      <header className="sticky top-0 z-40 bg-[#0c0c12]/90 backdrop-blur-xl border-b border-white/6 px-4 lg:px-8 py-3.5 transition-all">
+      <header className="sticky top-0 z-40 bg-[#0a0a0f]/95 backdrop-blur-xl border-b border-white/6 px-4 lg:px-8 py-3 transition-all">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           {/* Brand Logo & Tag */}
           <div className="flex items-center gap-3">
             <button
               onClick={() => handleTabChange('studio')}
-              className="flex items-center gap-2.5 text-left group"
+              className="flex items-center gap-2.5 text-left group cursor-pointer"
             >
-              <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-violet-600 via-indigo-600 to-amber-500 p-0.5 shadow-lg shadow-violet-600/25 group-hover:shadow-violet-600/40 transition-shadow">
-                <div className="w-full h-full bg-[#0d0d15] rounded-[10px] flex items-center justify-center">
-                  <Flame className="w-5 h-5 text-amber-400 group-hover:scale-110 transition-transform" />
-                </div>
+              <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-700/80 flex items-center justify-center shadow-inner group-hover:border-zinc-500 transition-colors">
+                <Flame className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
               </div>
               <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-white via-zinc-100 to-zinc-400 bg-clip-text text-transparent">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-base tracking-tight text-white">
                     LipSyncer
                   </span>
-                  <span className="px-1.5 py-0.5 text-[10px] font-semibold tracking-wider uppercase rounded-md bg-violet-500/15 text-violet-300 border border-violet-500/30">
-                    OpenArt Ultra
+                  <span className="px-1.5 py-0.5 text-[9px] font-mono font-medium tracking-wide uppercase rounded bg-zinc-800 text-zinc-300 border border-zinc-700/60">
+                    Studio Pro
                   </span>
                 </div>
-                <p className="text-[11px] text-zinc-500 hidden sm:block">
+                <p className="text-[11px] text-zinc-400 hidden sm:block">
                   Multi-Model Lip-Sync &amp; 20-Scene Omni Director
                 </p>
               </div>
@@ -609,82 +607,76 @@ export const App: React.FC = () => {
           </div>
 
           {/* Center Navigation Tabs */}
-          <nav className="hidden md:flex items-center gap-1 p-1 bg-white/4 border border-white/8 rounded-2xl">
+          <nav className="hidden md:flex items-center gap-1 p-1 bg-zinc-950/80 border border-zinc-800/80 rounded-xl">
             <button
               onClick={() => handleTabChange('studio')}
-              className={`px-3.5 py-1.5 text-xs font-medium rounded-xl transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'studio'
-                  ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-600/20'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
+                  ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700/70'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
               }`}
             >
-              <Film className="w-3.5 h-3.5" />
+              <Film className="w-3.5 h-3.5 text-zinc-400" />
               Studio
             </button>
 
             <button
               onClick={() => handleTabChange('full_song')}
-              className={`px-3.5 py-1.5 text-xs font-medium rounded-xl transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'full_song'
-                  ? 'bg-gradient-to-r from-violet-600 via-indigo-600 to-amber-500 text-white shadow-md shadow-violet-600/20'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
+                  ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700/70'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
               }`}
             >
-              <BrainCircuit className="w-3.5 h-3.5 text-emerald-400" />
+              <BrainCircuit className="w-3.5 h-3.5 text-sky-400" />
               Full Song Video
-              <span className="px-1 py-0.2 text-[9px] font-bold rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                NEW
-              </span>
             </button>
 
             <button
               onClick={() => handleTabChange('director')}
-              className={`px-3.5 py-1.5 text-xs font-medium rounded-xl transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'director'
-                  ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-600/20'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
+                  ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700/70'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
               }`}
             >
               <Music2 className="w-3.5 h-3.5 text-amber-400" />
               20-Scene Director
-              <span className="px-1 py-0.2 text-[9px] font-bold rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                PRO
-              </span>
             </button>
 
             <button
               onClick={() => handleTabChange('arena')}
-              className={`px-3.5 py-1.5 text-xs font-medium rounded-xl transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'arena'
-                  ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-600/20'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
+                  ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700/70'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
               }`}
             >
-              <Trophy className="w-3.5 h-3.5 text-yellow-400" />
+              <Trophy className="w-3.5 h-3.5 text-zinc-400" />
               Model Arena
             </button>
 
             <button
               onClick={() => handleTabChange('models')}
-              className={`px-3.5 py-1.5 text-xs font-medium rounded-xl transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'models'
-                  ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-600/20'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
+                  ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700/70'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
               }`}
             >
-              <Compass className="w-3.5 h-3.5" />
+              <Compass className="w-3.5 h-3.5 text-zinc-400" />
               11 Models
             </button>
 
             <button
               onClick={() => handleTabChange('vault')}
-              className={`px-3.5 py-1.5 text-xs font-medium rounded-xl transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'vault'
-                  ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-600/20'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
+                  ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700/70'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
               }`}
             >
-              <Layers className="w-3.5 h-3.5" />
+              <Layers className="w-3.5 h-3.5 text-zinc-400" />
               Creations ({recentClips.length})
             </button>
           </nav>
@@ -694,17 +686,17 @@ export const App: React.FC = () => {
             {/* ZeroGPU Pool Pill */}
             <button
               onClick={() => setIsHfPoolModalOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/4 hover:bg-white/8 border border-white/8 text-xs font-medium transition-all group"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 hover:border-zinc-700 text-xs font-medium transition-all group cursor-pointer"
               title="Click to manage 12-Account HF ZeroGPU Token Pool"
             >
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-zinc-300 group-hover:text-white hidden sm:inline">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span className="text-zinc-400 group-hover:text-zinc-200 hidden sm:inline text-[11px]">
                 HF Pool:
               </span>
-              <span className="font-semibold text-emerald-400">
+              <span className="font-mono text-zinc-200 text-[11px]">
                 {readyAccountsCount}/{totalAccountsCount}
               </span>
-              <KeyRound className="w-3.5 h-3.5 text-zinc-500 group-hover:text-zinc-300 ml-0.5" />
+              <KeyRound className="w-3 h-3 text-zinc-500 group-hover:text-zinc-400 ml-0.5" />
             </button>
 
             {/* How to Use / Help */}
