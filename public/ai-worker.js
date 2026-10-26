@@ -1,6 +1,7 @@
-import { pipeline, env } from '@xenova/transformers';
+import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
 
 env.allowLocalModels = false;
+env.useBrowserCache = true;
 const MODEL_NAME = 'Xenova/whisper-tiny.en';
 
 class PipelineSingleton {
@@ -36,7 +37,10 @@ function formatLRC(chunks) {
 
 self.addEventListener('message', async (event) => {
   const { audio } = event.data || {};
-  if (!audio) return;
+  if (!audio) {
+    self.postMessage({ status: 'error', error: 'No audio data provided' });
+    return;
+  }
   try {
     const transcriber = await PipelineSingleton.getInstance((progressData) => {
       self.postMessage({ status: 'progress', data: progressData });

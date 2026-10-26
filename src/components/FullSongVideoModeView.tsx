@@ -25,7 +25,9 @@ import {
   Check,
   Sliders,
   SlidersHorizontal,
-  Mic
+  Mic,
+  RotateCcw,
+  Database
 } from 'lucide-react';
 import {
   AspectRatioOption,
@@ -66,6 +68,11 @@ import {
   loadStoryboardProject,
   transcribeAudioWithBrowserWhisper
 } from '../services/storyboardDirectorService';
+import {
+  clearFullSongRackSession,
+  loadFullSongRackSession,
+  saveFullSongRackSessionDebounced
+} from '../services/fullSongSessionVault';
 import { buildVideoFileName, downloadVideoWithName } from '../services/clipNaming';
 
 export interface FullSongVideoModeViewProps {
@@ -286,9 +293,14 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
     ]
   );
 
-  // Auto-load a 1-click ready demo state on initial mount so the studio is immediately interactive
+  // Session Initialization: Restore existing rack session from IndexedDB (Modelissa pattern)
+  // or fall back to the 1-click interactive demo on brand-new runs.
+  const isInitialMountRef = useRef<boolean>(true);
+  const [isRackSaved, setIsRackSaved] = useState<boolean>(false);
+
   useEffect(() => {
     let mounted = true;
+
     const initDemo = async () => {
       try {
         const presetGuide = getLordIAmGratefulOmniGuidePreset();
@@ -310,8 +322,6 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
           .join('\n');
         setRawLyrics(guideLyrics);
 
-        // Create 14 uploaded storyboard images for the 20-scene song so the user immediately sees
-        // the 6 missing scenes auto-created on-the-fly to commensurate all 20 chunks!
         const p1 = generateDemoPortraitDataUrl('host_male');
         const p2 = generateDemoPortraitDataUrl('singer_female');
         const p3 = generateDemoPortraitDataUrl('cyber_diva');
@@ -334,11 +344,118 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
         // Ignore initial demo setup error
       }
     };
-    void initDemo();
+
+    const initSessionOrDemo = async () => {
+      try {
+        const savedSession = await loadFullSongRackSession();
+        if (savedSession && mounted) {
+          setSongTitle(savedSession.songTitle || 'Lord I Am Grateful');
+          setAudioFileName(savedSession.audioFileName || '');
+          if (savedSession.audioBlob) {
+            const url = URL.createObjectURL(savedSession.audioBlob);
+            setAudioFile(savedSession.audioBlob);
+            setAudioPreviewUrl(url);
+          }
+          if (savedSession.analysis) setAnalysis(savedSession.analysis);
+          setChunkMode(savedSession.chunkMode || 'target_scene_count');
+          setTargetSceneCount(savedSession.targetSceneCount || 20);
+          setIntervalMinutes(savedSession.intervalMinutes || 0);
+          setIntervalSeconds(savedSession.intervalSeconds || 8);
+          setUploadedImageUrls(savedSession.uploadedImageUrls || []);
+          setOrderedStoryboardFrames(savedSession.orderedStoryboardFrames || []);
+          if (savedSession.omniGuide) setOmniGuide(savedSession.omniGuide);
+          setAspectRatio(savedSession.aspectRatio || '16:9');
+          setSelectedModelId(savedSession.selectedModelId || 'lipsyncer-dsp-60fps');
+          setRawLyrics(savedSession.rawLyrics || DEFAULT_FULL_SONG_LYRICS);
+          if (savedSession.lyricSyncResult) setLyricSyncResult(savedSession.lyricSyncResult);
+          if (savedSession.chunks && savedSession.chunks.length > 0) {
+            setChunks(savedSession.chunks);
+          }
+          setShortfallFilledCount(savedSession.shortfallFilledCount || 0);
+          if (savedSession.mergedMasterClip) setMergedMasterClip(savedSession.mergedMasterClip);
+
+          setIsRackSaved(true);
+          setStatusBanner({
+            message: `💾 Restored active project from rack: "${savedSession.songTitle}" (${savedSession.chunks?.length || savedSession.uploadedImageUrls?.length || 20} scenes) • Everything preserved across refresh!`,
+            percent: 100,
+            variant: 'success'
+          });
+          isInitialMountRef.current = false;
+          return;
+        }
+
+        // Brand new run without saved rack: load initial demo
+        await initDemo();
+        isInitialMountRef.current = false;
+      } catch (err) {
+        console.warn('[SessionVault] Error restoring session, falling back to demo:', err);
+        await initDemo();
+        isInitialMountRef.current = false;
+      }
+    };
+
+    void initSessionOrDemo();
+
     return () => {
       mounted = false;
     };
   }, []);
+
+  // Modelissa-class Session Persistence: Auto-save active state to IndexedDB rack
+  useEffect(() => {
+    if (isInitialMountRef.current) return;
+    if (!audioFile && uploadedImageUrls.length === 0) return;
+
+    saveFullSongRackSessionDebounced({
+      songTitle,
+      audioBlob: audioFile,
+      audioFileName,
+      analysis,
+      chunkMode,
+      targetSceneCount,
+      intervalMinutes,
+      intervalSeconds,
+      uploadedImageUrls,
+      orderedStoryboardFrames,
+      omniGuide,
+      aspectRatio,
+      selectedModelId,
+      rawLyrics,
+      lyricSyncResult,
+      chunks,
+      shortfallFilledCount,
+      mergedMasterClip
+    }, 600);
+
+    setIsRackSaved(true);
+  }, [
+    songTitle,
+    audioFile,
+    audioFileName,
+    analysis,
+    chunkMode,
+    targetSceneCount,
+    intervalMinutes,
+    intervalSeconds,
+    uploadedImageUrls,
+    orderedStoryboardFrames,
+    omniGuide,
+    aspectRatio,
+    selectedModelId,
+    rawLyrics,
+    lyricSyncResult,
+    chunks,
+    shortfallFilledCount,
+    mergedMasterClip
+  ]);
+
+  // Explicit Clear Rack handler to start fresh
+  const handleClearRackSession = async () => {
+    if (window.confirm('Clear active rack session and reset to a fresh project?')) {
+      await clearFullSongRackSession();
+      window.location.reload();
+    }
+  };
 
   // Handle Full Song Audio Upload
   const handleSongFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -781,21 +898,35 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
     if (!audioFile) return;
     setIsTranscribingWhisper(true);
     setStatusBanner({
-      message: 'Initializing in-browser Whisper WebAssembly AI to transcribe vocal track...',
+      message: '🎙️ Initializing in-browser Whisper WebAssembly AI to transcribe vocal track...',
       percent: 25,
       variant: 'info'
     });
 
     try {
       const transcribedLrc = await transcribeAudioWithBrowserWhisper(audioFile, (msg) => {
-        setStatusBanner({ message: msg, percent: 55, variant: 'info' });
+        setStatusBanner({ message: `🎙️ ${msg}`, percent: 55, variant: 'info' });
       });
+
       const nextLyrics = transcribedLrc.trim() ? transcribedLrc : rawLyrics;
       if (transcribedLrc.trim()) {
         setRawLyrics(transcribedLrc);
+        setStatusBanner({
+          message: '✨ Whisper AI transcribed vocal lyrics successfully! Syncing with audio signal...',
+          percent: 80,
+          variant: 'info'
+        });
+      } else {
+        setStatusBanner({
+          message: '⚡ Vocal energy analyzed! Executing Acoustic Vocal DSP alignment...',
+          percent: 70,
+          variant: 'info'
+        });
       }
+
       await executeChunkAndFramePipeline({ lyricsOverride: nextLyrics });
-    } catch {
+    } catch (err: unknown) {
+      console.warn('[WhisperTranscribe] Falling back directly to Vocal DSP signal sync:', err);
       await handleSyncLyricsWithVocalDsp();
     } finally {
       setIsTranscribingWhisper(false);
@@ -1309,6 +1440,27 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap shrink-0">
+            {isRackSaved && (
+              <div
+                className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium flex items-center gap-1.5"
+                title="Active session is saved in browser IndexedDB (persists across refresh)"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <Database className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Rack Saved</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleClearRackSession}
+              className="px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-rose-950/40 text-zinc-400 hover:text-rose-300 border border-zinc-800 hover:border-rose-900/40 text-xs font-medium flex items-center gap-1.5 transition cursor-pointer"
+              title="Clear saved rack session and start a fresh song"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset Rack</span>
+            </button>
+
             <button
               type="button"
               onClick={handleDownloadAudioChunksZip}

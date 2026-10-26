@@ -515,20 +515,59 @@ export async function transcribeAudioWithBrowserWhisper(
   onStatus?: (msg: string) => void
 ): Promise<string> {
   onStatus?.('Initializing browser Whisper WebAssembly AI worker...');
-  const arrayBuffer = await audioFileOrBlob.arrayBuffer();
-  const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-  const ctx = new AudioCtx({ sampleRate: 16000 });
-  const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-  const float32 = audioBuffer.getChannelData(0);
+  let float32: Float32Array;
   try {
-    await ctx.close();
-  } catch {}
+    const arrayBuffer = await audioFileOrBlob.arrayBuffer();
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new AudioCtx({ sampleRate: 16000 });
+    const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+    float32 = audioBuffer.getChannelData(0);
+    try {
+      await ctx.close();
+    } catch {}
+  } catch (audioErr) {
+    console.warn('[Whisper] Could not decode audio buffer:', audioErr);
+    return '';
+  }
 
-  return new Promise((resolve, reject) => {
-    let worker: Worker;
+  return new Promise((resolve) => {
+    let worker: Worker | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const cleanup = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      if (worker) {
+        try {
+          worker.removeEventListener('message', handler);
+          worker.removeEventListener('error', errorHandler);
+          worker.terminate();
+        } catch {}
+        worker = null;
+      }
+    };
+
+    // 15-second safeguard timeout: never allow the UI button to hang permanently
+    timeoutId = setTimeout(() => {
+      console.warn('[Whisper] Transcription timed out after 15s. Falling back to Vocal DSP.');
+      cleanup();
+      resolve('');
+    }, 15000);
+
+    const errorHandler = (errEvent: ErrorEvent) => {
+      console.warn('[Whisper] Worker error event caught:', errEvent?.message || errEvent);
+      cleanup();
+      resolve('');
+    };
+
     try {
       worker = new Worker('/ai-worker.js', { type: 'module' });
-    } catch {
+      worker.addEventListener('error', errorHandler);
+    } catch (err) {
+      console.warn('[Whisper] Failed to initialize worker:', err);
+      cleanup();
       resolve('');
       return;
     }
@@ -540,13 +579,12 @@ export async function transcribeAudioWithBrowserWhisper(
       } else if (data.status === 'transcribing' && onStatus) {
         onStatus('Transcribing vocal performance in browser...');
       } else if (data.status === 'complete') {
-        worker.removeEventListener('message', handler);
-        worker.terminate();
+        cleanup();
         resolve(data.result || '');
       } else if (data.status === 'error') {
-        worker.removeEventListener('message', handler);
-        worker.terminate();
-        reject(new Error(data.error || 'Whisper worker transcription error'));
+        console.warn('[Whisper] Worker reported error:', data.error);
+        cleanup();
+        resolve('');
       }
     };
 
