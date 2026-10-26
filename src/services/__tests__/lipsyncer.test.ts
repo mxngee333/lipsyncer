@@ -20,8 +20,11 @@ import {
   computeSmartAudioChunkBoundaries,
   syncLyricsWithAudioSignal,
   synthesizeCommensurateSceneFrame,
-  buildFullSongVideoChunks
+  buildFullSongVideoChunks,
+  unravelStoryboardFilesAndZips,
+  parseStoryboardFileNameMeta
 } from '../fullSongVideoService';
+import JSZip from 'jszip';
 import { generateDemoVocalWavBlob } from '../audioDspService';
 
 describe('LipSyncer AI Multi-Model Catalog Tests', () => {
@@ -235,5 +238,81 @@ describe('Full Song Video Mode: Audiospliter Chunking, Vocal DSP Lyric Sync & On
     });
     expect(directFrame.dataUrl.startsWith('data:image/')).toBe(true);
     expect(directFrame.promptUsed).toContain('ZERO visible text');
+  });
+
+  it('should unravel 2 ChatGPT ZIPs (Folder_B_11_20.zip + Folder_A_01_10.zip) even when uploaded in reverse order and internally scrambled into exact 01->20 order', async () => {
+    const dummyPngBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+
+    // Build Folder B ZIP with scrambled internal entry order (just like Python zipfile)
+    const zipB = new JSZip();
+    const scrambledB = [
+      '18_Family_Prayer_By_Candlelight.png',
+      '16_Courtyard_Clapping_Circle.png',
+      '12_Bus_Window_Reflection.png',
+      '14_Doorstep_Grocery_Greeting.png',
+      '11_Porch_Gratitude.png',
+      '15_Community_Meal_Distribution.png',
+      '20_Grateful_Heart_Above_The_City.png',
+      '13_Office_Mentorship.png',
+      '17_Worship_Rehearsal.png',
+      '19_Community_Celebration.png'
+    ];
+    for (const name of scrambledB) {
+      zipB.file(`Lord_I_Am_Grateful_Folder_B_Images_11_20/${name}`, dummyPngBytes);
+    }
+    const blobB = await zipB.generateAsync({ type: 'blob' });
+    const fileB = new File([blobB], 'Lord_I_Am_Grateful_Folder_B_Images_11_20.zip', {
+      type: 'application/zip'
+    });
+
+    // Build Folder A ZIP with scrambled internal entry order
+    const zipA = new JSZip();
+    const scrambledA = [
+      '04_Camaraderie_In_The_Office_Break_Area.png',
+      '07_Father_Adjusting_Son_School_Backpack.png',
+      '08_Joyful_Family_Dinner_Gathering.png',
+      '10_Golden_Hour_Rooftop_Reflection.png',
+      '05_Golden_Hour_Market_Handshake.png',
+      '03_Gratitude_In_The_Conference_Room.png',
+      '06_Joyful_Family_Grocery_Unpacking.png',
+      '09_Heartfelt_Worship_In_Golden_Light.png',
+      '02_Golden_Walk_Through_The_Neighborhood.png',
+      '01_Golden_Hour_Bedroom_Serenade.png'
+    ];
+    for (const name of scrambledA) {
+      zipA.file(`Lord_I_Am_Grateful_Folder_A_Images_01_10/${name}`, dummyPngBytes);
+    }
+    const blobA = await zipA.generateAsync({ type: 'blob' });
+    const fileA = new File([blobA], 'Lord_I_Am_Grateful_Folder_A_Images_01_10.zip', {
+      type: 'application/zip'
+    });
+
+    // Upload Folder B FIRST, then Folder A SECOND (matching Windows Explorer screenshot)
+    const unraveled = await unravelStoryboardFilesAndZips({
+      files: [fileB, fileA],
+      targetTotal: 20
+    });
+
+    expect(unraveled.orderedFrames.length).toBe(20);
+    expect(unraveled.folderACount).toBe(10);
+    expect(unraveled.folderBCount).toBe(10);
+    expect(unraveled.missingSceneNumbers.length).toBe(0);
+    expect(unraveled.detectedSongTitle).toBe('Lord I Am Grateful');
+
+    // Verify exact 1..20 sequential ordering
+    for (let i = 0; i < 20; i++) {
+      expect(unraveled.orderedFrames[i].sceneNumber).toBe(i + 1);
+    }
+    expect(unraveled.orderedFrames[0].sceneTitle).toBe('Golden Hour Bedroom Serenade');
+    expect(unraveled.orderedFrames[10].sceneTitle).toBe('Porch Gratitude');
+    expect(unraveled.orderedFrames[19].sceneTitle).toBe('Grateful Heart Above The City');
+
+    // Verify Folder B offset guard when ChatGPT numbers Folder B files 01..10
+    const offsetCheck = parseStoryboardFileNameMeta({
+      fileName: 'Lord_I_Am_Grateful_Folder_B_Images_11_20/03_Gratitude_Scene.png',
+      parentArchiveOrFolder: 'Lord_I_Am_Grateful_Folder_B_Images_11_20.zip'
+    });
+    expect(offsetCheck.sceneNumber).toBe(13);
+    expect(offsetCheck.folderBatch).toBe('B');
   });
 });

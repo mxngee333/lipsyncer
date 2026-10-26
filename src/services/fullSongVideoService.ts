@@ -6,7 +6,9 @@ import {
   FullSongLyricSyncResult,
   FullSongSceneFrameSource,
   FullSongVideoChunk,
-  GeneratedLipSyncClip
+  GeneratedLipSyncClip,
+  UnraveledStoryboardFrame,
+  UnraveledStoryboardSetResult
 } from '../types';
 import {
   analyzeVocalFormantsAndBpm,
@@ -120,6 +122,420 @@ function formatLrcTimestamp(sec: number): string {
   const wholeSec = Math.floor(rem);
   const hundredths = Math.floor((rem - wholeSec) * 100);
   return `[${String(mins).padStart(2, '0')}:${String(wholeSec).padStart(2, '0')}.${String(hundredths).padStart(2, '0')}]`;
+}
+
+/**
+ * Extracts a clean Song Title from ChatGPT Folder A / Folder B ZIP filenames, e.g.:
+ * "Lord_I_Am_Grateful_Folder_A_Images_01_10.zip" -> "Lord I Am Grateful"
+ * "Lord_I_Am_Grateful_Folder_B_Images_11_20 (1).zip" -> "Lord I Am Grateful"
+ */
+export function extractSongTitleFromArchiveName(fileName: string): string | undefined {
+  if (!fileName) return undefined;
+  const base = fileName
+    .replace(/^.*[\\/]/, '')
+    .replace(/\.zip$/i, '')
+    .replace(/\s*\(\d+\)\s*$/, '');
+
+  const cleaned = base
+    .replace(/[_\-\s]*folder[_\-\s]*[ab][_\-\s]*images[_\-\s]*\d+[_\-\s]*\d+.*$/i, '')
+    .replace(/[_\-\s]*folder[_\-\s]*[ab].*$/i, '')
+    .replace(/[_\-\s]*images[_\-\s]*\d+[_\-\s]*\d+.*$/i, '')
+    .replace(/[_\-\s]*chunks.*$/i, '')
+    .replace(/^\d+\.\s*/, '')
+    .replace(/_/g, ' ')
+    .trim();
+
+  if (cleaned.length >= 2 && cleaned.toLowerCase() !== 'storyboard') {
+    return cleaned;
+  }
+  return undefined;
+}
+
+/**
+ * Parses a storyboard image's filename and parent ZIP/folder path into canonical 01..20 numbering,
+ * Folder A (01–10) vs Folder B (11–20) batch classification, human-readable scene title,
+ * and optional embedded time window (`0m12s-0m24s`).
+ */
+export function parseStoryboardFileNameMeta(params: {
+  fileName: string;
+  parentArchiveOrFolder?: string;
+  forcedBatch?: 'A' | 'B' | 'AUTO';
+  fallbackIndex?: number;
+}): {
+  sceneNumber: number;
+  sceneCode: string;
+  folderBatch: 'A' | 'B' | 'EXTRA';
+  sceneTitle: string;
+  originalFileName: string;
+  parsedStartSec?: number;
+  parsedEndSec?: number;
+} {
+  const rawPath = (params.fileName || '').replace(/\\/g, '/');
+  const parts = rawPath.split('/').filter(Boolean);
+  const baseFileName = parts[parts.length - 1] || 'scene_01.png';
+  const dirPart = parts.slice(0, -1).join('/');
+  const combinedContext = `${params.parentArchiveOrFolder || ''}/${dirPart}`;
+
+  // Determine batch hint ('A' for 01–10, 'B' for 11–20)
+  let batchHint: 'A' | 'B' | 'AUTO' = params.forcedBatch || 'AUTO';
+  if (batchHint === 'AUTO') {
+    if (/(?:folder[_\-\s]*b|11[_\-\s]*(?:to[_\-\s]*)?20|batch[_\-\s]*b|part[_\-\s]*2|set[_\-\s]*b)/i.test(combinedContext)) {
+      batchHint = 'B';
+    } else if (/(?:folder[_\-\s]*a|0?1[_\-\s]*(?:to[_\-\s]*)?10|batch[_\-\s]*a|part[_\-\s]*1|set[_\-\s]*a)/i.test(combinedContext)) {
+      batchHint = 'A';
+    }
+  }
+
+  const nameNoExt = baseFileName.replace(/\.[a-z0-9]{2,5}$/i, '');
+
+  // Check for embedded time window e.g. "scene_02_0m12s-0m24s"
+  let parsedStartSec: number | undefined;
+  let parsedEndSec: number | undefined;
+  const timeMatch = nameNoExt.match(/(\d+)m(\d+)s[_\-]+(\d+)m(\d+)s/i);
+  if (timeMatch) {
+    parsedStartSec = parseInt(timeMatch[1], 10) * 60 + parseInt(timeMatch[2], 10);
+    parsedEndSec = parseInt(timeMatch[3], 10) * 60 + parseInt(timeMatch[4], 10);
+  }
+
+  // Extract raw scene number from filename
+  let rawNum: number | undefined;
+  const scenePrefixMatch = nameNoExt.match(/(?:^|[_\-\s])scene[_\-\s]*(\d{1,3})(?:[_\-\s]|$)/i);
+  const leadingNumMatch = nameNoExt.match(/^(\d{1,3})(?:[_\-\s.]|$)/);
+  const anyNumMatch = nameNoExt.match(/(?:^|[_\-\s])(\d{1,2})(?:[_\-\s]|$)/);
+
+  if (scenePrefixMatch) {
+    rawNum = parseInt(scenePrefixMatch[1], 10);
+  } else if (leadingNumMatch) {
+    rawNum = parseInt(leadingNumMatch[1], 10);
+  } else if (anyNumMatch) {
+    rawNum = parseInt(anyNumMatch[1], 10);
+  }
+
+  let sceneNumber = rawNum && rawNum > 0 ? rawNum : params.fallbackIndex || 1;
+
+  // Smart Folder B (11–20) offset guard:
+  // If the file came from Folder B (11–20) and ChatGPT numbered it 01..10 inside Folder B, shift +10 -> 11..20!
+  // If ChatGPT already numbered it 11..20 inside Folder B, keep 11..20!
+  if (batchHint === 'B' && sceneNumber >= 1 && sceneNumber <= 10) {
+    sceneNumber += 10;
+  }
+
+  const sceneCode = sceneNumber < 10 ? `0${sceneNumber}` : `${sceneNumber}`;
+  const folderBatch: 'A' | 'B' | 'EXTRA' =
+    sceneNumber <= 10 ? 'A' : sceneNumber <= 20 ? 'B' : 'EXTRA';
+
+  // Extract clean human-readable scene title from e.g. "01_Golden_Hour_Bedroom_Serenade"
+  let cleanTitle = nameNoExt
+    .replace(/^(?:scene[_\-\s]*)?\d{1,3}[_\-\s.]*/i, '')
+    .replace(/\d+m\d+s[_\-]+\d+m\d+s/gi, '')
+    .replace(/\s*\(\d+\)\s*$/, '')
+    .replace(/[_\-]+/g, ' ')
+    .trim();
+
+  if (!cleanTitle || /^\d+$/.test(cleanTitle)) {
+    cleanTitle = `Scene ${sceneCode}`;
+  } else {
+    cleanTitle = cleanTitle
+      .split(/\s+/)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+  }
+
+  return {
+    sceneNumber,
+    sceneCode,
+    folderBatch,
+    sceneTitle: cleanTitle,
+    originalFileName: baseFileName,
+    parsedStartSec,
+    parsedEndSec
+  };
+}
+
+/**
+ * Parses a `storyboard_manifest.txt` or `..._Exact_LipSync_Omni.txt` companion text file
+ * into per-scene lyrics, prompts, and time windows.
+ */
+export function parseStoryboardManifestTxt(txtContent: string): {
+  scenesMap: Map<
+    number,
+    { lyrics?: string; prompt?: string; startSec?: number; endSec?: number }
+  >;
+  combinedLyrics: string;
+} {
+  const scenesMap = new Map<
+    number,
+    { lyrics?: string; prompt?: string; startSec?: number; endSec?: number }
+  >();
+  if (!txtContent || !txtContent.trim()) {
+    return { scenesMap, combinedLyrics: '' };
+  }
+
+  // Pattern 1: Spirit Reign / ChatGPT "Scene 1 [0:00 - 0:12]\nLyrics: ...\nPrompt: ..."
+  const blocks = txtContent.split(/---+|\n(?=Scene\s+\d+\s*\[)/i);
+  for (const block of blocks) {
+    const headerMatch = block.match(
+      /Scene\s+(\d+)\s*\[\s*(\d+):(\d+)\s*-\s*(\d+):(\d+)\s*\]/i
+    );
+    if (headerMatch) {
+      const scNum = parseInt(headerMatch[1], 10);
+      const startSec = parseInt(headerMatch[2], 10) * 60 + parseInt(headerMatch[3], 10);
+      const endSec = parseInt(headerMatch[4], 10) * 60 + parseInt(headerMatch[5], 10);
+      const lyricsMatch = block.match(/Lyrics:\s*([^\r\n]+)/i);
+      const promptMatch = block.match(/Prompt:\s*([^\r\n]+)/i);
+      scenesMap.set(scNum, {
+        lyrics: lyricsMatch ? lyricsMatch[1].trim() : undefined,
+        prompt: promptMatch ? promptMatch[1].trim() : undefined,
+        startSec,
+        endSec
+      });
+    }
+  }
+
+  const lyricLines: string[] = [];
+  const sortedKeys = Array.from(scenesMap.keys()).sort((a, b) => a - b);
+  for (const k of sortedKeys) {
+    const item = scenesMap.get(k);
+    if (item?.lyrics) {
+      lyricLines.push(item.lyrics);
+    }
+  }
+
+  return {
+    scenesMap,
+    combinedLyrics: lyricLines.join('\n')
+  };
+}
+
+/**
+ * Summarizes and sorts an array of `UnraveledStoryboardFrame` objects into strict 01 -> 20 order.
+ */
+export function buildOrderedStoryboardSetSummary(
+  frames: UnraveledStoryboardFrame[],
+  targetTotal = 20,
+  detectedSongTitle?: string,
+  detectedManifestLyrics?: string
+): UnraveledStoryboardSetResult {
+  const byNumber = new Map<number, UnraveledStoryboardFrame>();
+  for (const f of frames) {
+    byNumber.set(f.sceneNumber, {
+      ...f,
+      sceneCode: f.sceneNumber < 10 ? `0${f.sceneNumber}` : `${f.sceneNumber}`,
+      folderBatch: f.sceneNumber <= 10 ? 'A' : f.sceneNumber <= 20 ? 'B' : 'EXTRA'
+    });
+  }
+
+  const orderedFrames = Array.from(byNumber.values()).sort(
+    (a, b) => a.sceneNumber - b.sceneNumber
+  );
+
+  const folderACount = orderedFrames.filter(
+    (f) => f.sceneNumber >= 1 && f.sceneNumber <= 10
+  ).length;
+  const folderBCount = orderedFrames.filter(
+    (f) => f.sceneNumber >= 11 && f.sceneNumber <= 20
+  ).length;
+
+  const missingSceneNumbers: number[] = [];
+  for (let s = 1; s <= targetTotal; s++) {
+    if (!byNumber.has(s)) {
+      missingSceneNumbers.push(s);
+    }
+  }
+
+  return {
+    orderedFrames,
+    folderACount,
+    folderBCount,
+    missingSceneNumbers,
+    detectedSongTitle,
+    detectedManifestLyrics
+  };
+}
+
+/**
+ * Unravels ChatGPT 2-ZIP Storyboard Sets (`Folder_A_Images_01_10.zip` + `Folder_B_Images_11_20.zip`)
+ * and/or loose image files in ANY upload order (even when ZIP internal entries are scrambled like
+ * 04, 07, 08, 10... or when Folder B is selected before Folder A) into a strictly ordered 01 -> 20 set.
+ */
+export async function unravelStoryboardFilesAndZips(params: {
+  files: File[];
+  existingFrames?: UnraveledStoryboardFrame[];
+  forcedBatch?: 'A' | 'B' | 'AUTO';
+  targetTotal?: number;
+  onProgress?: (message: string) => void;
+}): Promise<UnraveledStoryboardSetResult> {
+  const {
+    files,
+    existingFrames = [],
+    forcedBatch = 'AUTO',
+    targetTotal = 20,
+    onProgress
+  } = params;
+
+  const frameMap = new Map<number, UnraveledStoryboardFrame>();
+  for (const existing of existingFrames) {
+    frameMap.set(existing.sceneNumber, existing);
+  }
+
+  let detectedSongTitle: string | undefined;
+  let detectedManifestLyrics: string | undefined;
+  const globalManifestMap = new Map<
+    number,
+    { lyrics?: string; prompt?: string; startSec?: number; endSec?: number }
+  >();
+
+  const mimeFromExt = (name: string): string => {
+    const ext = (name.split('.').pop() || '').toLowerCase();
+    if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+    if (ext === 'webp') return 'image/webp';
+    if (ext === 'svg') return 'image/svg+xml';
+    return 'image/png';
+  };
+
+  let fallbackCounter = frameMap.size + 1;
+
+  for (const file of files) {
+    const fileName = file.name || '';
+    const lowerName = fileName.toLowerCase();
+
+    const maybeTitle = extractSongTitleFromArchiveName(fileName);
+    if (maybeTitle && !detectedSongTitle) {
+      detectedSongTitle = maybeTitle;
+    }
+
+    if (lowerName.endsWith('.zip')) {
+      onProgress?.(`Unravelling ZIP archive: ${fileName}...`);
+      const zip = await JSZip.loadAsync(file);
+      const entryNames = Object.keys(zip.files);
+
+      // 1. Check for any manifest / Omni .txt inside the ZIP first
+      for (const entryPath of entryNames) {
+        const entry = zip.files[entryPath];
+        if (entry.dir) continue;
+        if (entryPath.includes('__MACOSX') || entryPath.split('/').pop()?.startsWith('._')) {
+          continue;
+        }
+        if (/\.txt$/i.test(entryPath)) {
+          try {
+            const txt = await entry.async('string');
+            const parsedManifest = parseStoryboardManifestTxt(txt);
+            if (parsedManifest.combinedLyrics && !detectedManifestLyrics) {
+              detectedManifestLyrics = parsedManifest.combinedLyrics;
+            }
+            for (const [k, v] of parsedManifest.scenesMap.entries()) {
+              globalManifestMap.set(k, v);
+            }
+          } catch {
+            // Ignore unreadable txt
+          }
+        }
+      }
+
+      // 2. Collect all image entries inside the ZIP
+      const imageEntries = entryNames.filter((entryPath) => {
+        const entry = zip.files[entryPath];
+        if (entry.dir) return false;
+        const base = entryPath.split('/').pop() || '';
+        if (entryPath.includes('__MACOSX') || base.startsWith('._') || base.startsWith('.')) {
+          return false;
+        }
+        return /\.(png|jpe?g|webp|gif|bmp)$/i.test(base);
+      });
+
+      // Extract metadata for each image entry and sort by sceneNumber before assigning
+      const parsedZipImages: Array<{
+        entryPath: string;
+        meta: ReturnType<typeof parseStoryboardFileNameMeta>;
+      }> = imageEntries.map((entryPath, idx) => ({
+        entryPath,
+        meta: parseStoryboardFileNameMeta({
+          fileName: entryPath,
+          parentArchiveOrFolder: fileName,
+          forcedBatch,
+          fallbackIndex: idx + 1
+        })
+      }));
+
+      parsedZipImages.sort((a, b) => a.meta.sceneNumber - b.meta.sceneNumber);
+
+      for (const item of parsedZipImages) {
+        const entry = zip.files[item.entryPath];
+        const base64 = await entry.async('base64');
+        const mime = mimeFromExt(item.meta.originalFileName);
+        const dataUrl = `data:${mime};base64,${base64}`;
+        const manifestInfo = globalManifestMap.get(item.meta.sceneNumber);
+
+        frameMap.set(item.meta.sceneNumber, {
+          sceneNumber: item.meta.sceneNumber,
+          sceneCode: item.meta.sceneCode,
+          folderBatch: item.meta.folderBatch,
+          sceneTitle: item.meta.sceneTitle,
+          originalFileName: item.meta.originalFileName,
+          sourceArchiveName: fileName,
+          dataUrl,
+          parsedStartSec: item.meta.parsedStartSec ?? manifestInfo?.startSec,
+          parsedEndSec: item.meta.parsedEndSec ?? manifestInfo?.endSec,
+          manifestLyrics: manifestInfo?.lyrics,
+          manifestPrompt: manifestInfo?.prompt
+        });
+      }
+    } else if (lowerName.endsWith('.txt')) {
+      try {
+        const txt = await file.text();
+        const parsedManifest = parseStoryboardManifestTxt(txt);
+        if (parsedManifest.combinedLyrics && !detectedManifestLyrics) {
+          detectedManifestLyrics = parsedManifest.combinedLyrics;
+        }
+        for (const [k, v] of parsedManifest.scenesMap.entries()) {
+          globalManifestMap.set(k, v);
+        }
+      } catch {
+        // Ignore txt read error
+      }
+    } else if (/\.(png|jpe?g|webp|gif|bmp)$/i.test(lowerName) || file.type.startsWith('image/')) {
+      const relativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || fileName;
+      const meta = parseStoryboardFileNameMeta({
+        fileName: relativePath,
+        parentArchiveOrFolder: relativePath,
+        forcedBatch,
+        fallbackIndex: fallbackCounter++
+      });
+      const dataUrl = await blobToDataUrl(file);
+      const manifestInfo = globalManifestMap.get(meta.sceneNumber);
+
+      frameMap.set(meta.sceneNumber, {
+        sceneNumber: meta.sceneNumber,
+        sceneCode: meta.sceneCode,
+        folderBatch: meta.folderBatch,
+        sceneTitle: meta.sceneTitle,
+        originalFileName: meta.originalFileName,
+        dataUrl,
+        parsedStartSec: meta.parsedStartSec ?? manifestInfo?.startSec,
+        parsedEndSec: meta.parsedEndSec ?? manifestInfo?.endSec,
+        manifestLyrics: manifestInfo?.lyrics,
+        manifestPrompt: manifestInfo?.prompt
+      });
+    }
+  }
+
+  // Enrich any frames if manifest was parsed after image
+  for (const [scNum, info] of globalManifestMap.entries()) {
+    const existing = frameMap.get(scNum);
+    if (existing) {
+      existing.manifestLyrics = existing.manifestLyrics ?? info.lyrics;
+      existing.manifestPrompt = existing.manifestPrompt ?? info.prompt;
+      existing.parsedStartSec = existing.parsedStartSec ?? info.startSec;
+      existing.parsedEndSec = existing.parsedEndSec ?? info.endSec;
+    }
+  }
+
+  return buildOrderedStoryboardSetSummary(
+    Array.from(frameMap.values()),
+    targetTotal,
+    detectedSongTitle,
+    detectedManifestLyrics
+  );
 }
 
 /**
@@ -624,6 +1040,7 @@ export async function buildFullSongVideoChunks(params: {
   songTitle: string;
   rawLyrics: string;
   uploadedImageUrls: string[];
+  orderedStoryboardFrames?: UnraveledStoryboardFrame[];
   chunkMode: FullSongChunkMode;
   fixedIntervalSec?: number;
   targetSceneCount?: number;
@@ -705,26 +1122,37 @@ export async function buildFullSongVideoChunks(params: {
       audioChunkBlob = undefined;
     }
 
-    // 2. Pair uploaded storyboard image OR synthesize commensurate scene frame on the fly if short!
-    let imageSourceUrl = params.uploadedImageUrls[i] || '';
+    // 2. Pair uploaded storyboard image (by exact sceneNumber 1..20 or index) OR synthesize commensurate scene frame on the fly if short!
+    const matchedSlotFrame = params.orderedStoryboardFrames?.find(
+      (f) => f.sceneNumber === chunkIndex
+    );
+    let imageSourceUrl = matchedSlotFrame?.dataUrl || params.uploadedImageUrls[i] || '';
     let frameSourceType: FullSongSceneFrameSource = 'uploaded';
-    let commensurateSceneLabel = `Storyboard Frame #${chunkCode}`;
+    let commensurateSceneLabel = matchedSlotFrame
+      ? `Set ${matchedSlotFrame.folderBatch} #${matchedSlotFrame.sceneCode} · ${matchedSlotFrame.sceneTitle}`
+      : `Storyboard Frame #${chunkCode}`;
     const camPreset = CAMERA_CYCLE[i % CAMERA_CYCLE.length];
 
-    let prompt =
-      aligned.syncMode === 'LIP-SYNC'
-        ? `Scene ${chunkCode}: Lead vocalist passionately singing "${aligned.syncedLyrics}" in studio stage lighting, exact phoneme lip-sync articulation, natural eye blinks, ${camPreset.replace('_', ' ')} camera motion. Zero visible text.`
-        : `Scene ${chunkCode}: Cinematic atmospheric performance B-roll, mouth naturally relaxed and closed, NO SINGING, NO LIP-SYNC, majestic ${camPreset.replace('_', ' ')} camera motion. Zero visible text.`;
+    const effectiveLyrics = matchedSlotFrame?.manifestLyrics || aligned.syncedLyrics;
+    let prompt = matchedSlotFrame?.manifestPrompt
+      ? `${matchedSlotFrame.manifestPrompt} Zero visible text.`
+      : aligned.syncMode === 'LIP-SYNC'
+        ? `Scene ${chunkCode} (${matchedSlotFrame?.sceneTitle || 'Performance'}): Lead vocalist passionately singing "${effectiveLyrics}" in studio stage lighting, exact phoneme lip-sync articulation, natural eye blinks, ${camPreset.replace('_', ' ')} camera motion. Zero visible text.`
+        : `Scene ${chunkCode} (${matchedSlotFrame?.sceneTitle || 'Atmospheric'}): Cinematic atmospheric performance B-roll, mouth naturally relaxed and closed, NO SINGING, NO LIP-SYNC, majestic ${camPreset.replace('_', ' ')} camera motion. Zero visible text.`;
 
     if (!imageSourceUrl) {
       shortfallFilledCount++;
       frameSourceType = 'commensurate_synthesized';
+      const allRefUrls =
+        params.orderedStoryboardFrames && params.orderedStoryboardFrames.length > 0
+          ? params.orderedStoryboardFrames.map((f) => f.dataUrl)
+          : params.uploadedImageUrls;
       const synthesized = await synthesizeCommensurateSceneFrame({
         chunkIndex,
         totalChunks: windows.length,
         syncMode: aligned.syncMode,
         aspectRatio: params.aspectRatio,
-        referenceImageUrls: params.uploadedImageUrls,
+        referenceImageUrls: allRefUrls,
         vocalEnergyScore: aligned.vocalEnergyScore
       });
       imageSourceUrl = synthesized.dataUrl;
@@ -744,7 +1172,7 @@ export async function buildFullSongVideoChunks(params: {
       audioChunkFileName: `${cleanSongSlug}_chunk_${chunkCode}_${win.startSec.toFixed(1)}s_${win.endSec.toFixed(1)}s.wav`,
       vocalEnergyScore: aligned.vocalEnergyScore,
       syncMode: aligned.syncMode,
-      syncedLyrics: aligned.syncedLyrics,
+      syncedLyrics: effectiveLyrics,
       lyricSyncConfidence: aligned.confidence,
       imageSourceUrl,
       frameSourceType,

@@ -46,7 +46,8 @@ import {
 } from '../services/audioDspService';
 import {
   syncLyricsWithAudioSignal,
-  synthesizeCommensurateSceneFrame
+  synthesizeCommensurateSceneFrame,
+  unravelStoryboardFilesAndZips
 } from '../services/fullSongVideoService';
 import { LIPSYNC_MODELS } from '../data/modelCatalog';
 import { buildVideoFileName } from '../services/clipNaming';
@@ -196,9 +197,13 @@ export const StoryboardDirectorView: React.FC = () => {
     setStatusMessage(`Folder ${batch} image generation complete!`);
   };
 
-  // Multi-image storyboard upload with on-the-fly commensurate shortfall synthesis
-  const handleBulkStoryboardUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Multi-image or ChatGPT 2-ZIP (Folder A 01–10 + Folder B 11–20) storyboard upload with on-the-fly commensurate shortfall synthesis
+  const handleBulkStoryboardUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    forcedBatch: 'A' | 'B' | 'AUTO' = 'AUTO'
+  ) => {
     const files = Array.from(e.target.files || []);
+    e.target.value = '';
     if (files.length === 0) return;
 
     let currentProj = project;
@@ -216,49 +221,78 @@ export const StoryboardDirectorView: React.FC = () => {
 
     setIsFillingCommensurate(true);
     setStatusMessage(
-      `Ingesting ${files.length} uploaded storyboard image(s) across 20 scenes...`
+      `Unravelling & sorting ${files.map((f) => f.name).join(', ')} into scenes 01–20...`
     );
 
-    const readDataUrl = (f: File): Promise<string> =>
-      new Promise((resolve) => {
-        const r = new FileReader();
-        r.onload = () => resolve(typeof r.result === 'string' ? r.result : '');
-        r.onerror = () => resolve('');
-        r.readAsDataURL(f);
-      });
+    const unraveled = await unravelStoryboardFilesAndZips({
+      files,
+      forcedBatch,
+      targetTotal: 20,
+      onProgress: (msg) => setStatusMessage(msg)
+    });
 
-    const uploadedUrls: string[] = [];
-    for (const f of files.slice(0, 20)) {
-      const url = await readDataUrl(f);
-      if (url) uploadedUrls.push(url);
+    if (unraveled.detectedSongTitle) {
+      setSongTitle(unraveled.detectedSongTitle);
+      currentProj.songTitle = unraveled.detectedSongTitle;
     }
 
-    let synthesizedCount = 0;
+    const byScene = new Map(
+      unraveled.orderedFrames.map((f) => [f.sceneNumber, f])
+    );
+
+    // Collect all existing or newly uploaded reference URLs for commensurate shortfall synthesis
+    const allRefs = [
+      ...unraveled.orderedFrames.map((f) => f.dataUrl),
+      ...currentProj.scenes.map((s) => s.generatedImageUrl || '').filter(Boolean)
+    ];
+
+    let mappedCount = 0;
     for (let i = 0; i < currentProj.scenes.length; i++) {
       const sc = currentProj.scenes[i];
-      if (i < uploadedUrls.length) {
-        sc.generatedImageUrl = uploadedUrls[i];
-      } else {
-        const synthesized = await synthesizeCommensurateSceneFrame({
-          chunkIndex: i + 1,
-          totalChunks: currentProj.scenes.length,
-          syncMode: sc.syncMode === 'LIP-SYNC' ? 'LIP-SYNC' : 'CINEMATIC-MOTION',
-          aspectRatio: '16:9',
-          referenceImageUrls: uploadedUrls,
-          vocalEnergyScore: sc.syncMode === 'LIP-SYNC' ? 0.72 : 0.2
-        });
-        sc.generatedImageUrl = synthesized.dataUrl;
-        synthesizedCount++;
+      const matched = byScene.get(sc.sceneNumber);
+      if (matched) {
+        sc.generatedImageUrl = matched.dataUrl;
+        if (matched.sceneTitle && !matched.sceneTitle.startsWith('Scene ')) {
+          sc.shortName = matched.sceneTitle;
+        }
+        if (matched.manifestLyrics) {
+          sc.exactLyrics = matched.manifestLyrics;
+        }
+        mappedCount++;
       }
     }
 
+    // If user uploaded both sets or wants missing slots filled when uploading AUTO:
+    let synthesizedCount = 0;
+    if (forcedBatch === 'AUTO' && allRefs.length > 0) {
+      const totalWithImages = currentProj.scenes.filter((s) => Boolean(s.generatedImageUrl)).length;
+      if (totalWithImages > 0 && totalWithImages < 20 && files.every((f) => !f.name.toLowerCase().includes('folder_'))) {
+        for (let i = 0; i < currentProj.scenes.length; i++) {
+          const sc = currentProj.scenes[i];
+          if (!sc.generatedImageUrl) {
+            const synthesized = await synthesizeCommensurateSceneFrame({
+              chunkIndex: i + 1,
+              totalChunks: currentProj.scenes.length,
+              syncMode: sc.syncMode === 'LIP-SYNC' ? 'LIP-SYNC' : 'CINEMATIC-MOTION',
+              aspectRatio: '16:9',
+              referenceImageUrls: allRefs,
+              vocalEnergyScore: sc.syncMode === 'LIP-SYNC' ? 0.72 : 0.2
+            });
+            sc.generatedImageUrl = synthesized.dataUrl;
+            synthesizedCount++;
+          }
+        }
+      }
+    }
+
+    const totalLoaded = currentProj.scenes.filter((s) => Boolean(s.generatedImageUrl)).length;
     saveStoryboardProject(currentProj);
     setProject({ ...currentProj });
     setIsFillingCommensurate(false);
     setStatusMessage(
       synthesizedCount > 0
-        ? `Mapped ${uploadedUrls.length} uploaded storyboard image(s) + synthesized ${synthesizedCount} commensurate scene frame(s) on-the-fly!`
-        : `Mapped all 20 uploaded storyboard images to the 20-scene board!`
+        ? `Mapped ${mappedCount} frame(s) in exact 01→20 order + synthesized ${synthesizedCount} commensurate frame(s) on-the-fly (${totalLoaded}/20 scenes ready)!`
+        : `Unraveled & mapped ${mappedCount} frame(s) in exact #01 → #20 order (${totalLoaded}/20 scenes loaded)!`
     );
   };
 
@@ -805,13 +839,13 @@ export const StoryboardDirectorView: React.FC = () => {
         <div className="pt-2 flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2 flex-wrap">
             <label className="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer">
-              <ImageIcon className="w-3.5 h-3.5" />
-              <span>Upload Storyboard Images (Auto-Fills Shortfall)</span>
+              <FolderArchive className="w-3.5 h-3.5" />
+              <span>Upload ChatGPT ZIPs (`01–10` + `11–20`) or Storyboard Images</span>
               <input
                 type="file"
-                accept="image/*"
+                accept=".zip,application/zip,application/x-zip-compressed,image/*,.txt"
                 multiple
-                onChange={handleBulkStoryboardUpload}
+                onChange={(e) => void handleBulkStoryboardUpload(e, 'AUTO')}
                 className="hidden"
               />
             </label>

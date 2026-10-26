@@ -304,3 +304,32 @@ export interface FullSongLyricSyncResult {
   overallSyncConfidence: number;
 }
 
+/**
+ * Represents a single storyboard image frame unraveled from ChatGPT Folder A (01–10) ZIP,
+ * Folder B (11–20) ZIP, or loose image uploads, normalized into canonical 01..20 numbering.
+ */
+export interface UnraveledStoryboardFrame {
+  sceneNumber: number; // Canonical 1..20+ slot
+  sceneCode: string; // "01".."20"
+  folderBatch: 'A' | 'B' | 'EXTRA';
+  sceneTitle: string; // e.g. "Golden Hour Bedroom Serenade"
+  originalFileName: string; // e.g. "01_Golden_Hour_Bedroom_Serenade.png"
+  sourceArchiveName?: string; // e.g. "Lord_I_Am_Grateful_Folder_A_Images_01_10.zip"
+  dataUrl: string;
+  parsedStartSec?: number;
+  parsedEndSec?: number;
+  manifestLyrics?: string;
+  manifestPrompt?: string;
+}
+
+export interface UnraveledStoryboardSetResult {
+  orderedFrames: UnraveledStoryboardFrame[];
+  folderACount: number; // Count of frames in slots 1..10
+  folderBCount: number; // Count of frames in slots 11..20
+  missingSceneNumbers: number[]; // Any unfilled slots in 1..20
+  detectedSongTitle?: string;
+  detectedManifestLyrics?: string;
+  extractedWavChunks?: Array<{ index: number; fileName: string; blob: Blob }>;
+}
+
+

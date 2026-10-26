@@ -31,7 +31,8 @@ import {
   FullSongChunkMode,
   FullSongLyricSyncResult,
   FullSongVideoChunk,
-  GeneratedLipSyncClip
+  GeneratedLipSyncClip,
+  UnraveledStoryboardFrame
 } from '../types';
 import { LIPSYNC_MODELS } from '../data/modelCatalog';
 import {
@@ -42,12 +43,14 @@ import {
 } from '../services/audioDspService';
 import {
   buildFullSongVideoChunks,
+  buildOrderedStoryboardSetSummary,
   mergeFullSongVideoMaster,
   packageAudioChunksZip,
   packageFullSongProductionZip,
   renderSingleFullSongChunkLipSync,
   syncLyricsWithAudioSignal,
   synthesizeCommensurateSceneFrame,
+  unravelStoryboardFilesAndZips,
   upgradeChunkFrameWithAi
 } from '../services/fullSongVideoService';
 import {
@@ -93,6 +96,9 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
 
   // Storyboard Images & Commensurate Frame State
   const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
+  const [orderedStoryboardFrames, setOrderedStoryboardFrames] = useState<
+    UnraveledStoryboardFrame[]
+  >([]);
   const [aspectRatio, setAspectRatio] = useState<AspectRatioOption>('16:9');
   const [selectedModelId, setSelectedModelId] = useState<string>('lipsyncer-dsp-60fps');
 
@@ -164,15 +170,21 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
     async (opts?: {
       audioOverride?: Blob | File;
       imagesOverride?: string[];
+      framesOverride?: UnraveledStoryboardFrame[];
       lyricsOverride?: string;
+      songTitleOverride?: string;
       modeOverride?: FullSongChunkMode;
       sceneCountOverride?: number;
     }) => {
       const activeAudio = opts?.audioOverride ?? audioFile;
       if (!activeAudio) return;
 
-      const activeImages = opts?.imagesOverride ?? uploadedImageUrls;
+      const activeFrames = opts?.framesOverride ?? orderedStoryboardFrames;
+      const activeImages =
+        opts?.imagesOverride ??
+        (activeFrames.length > 0 ? activeFrames.map((f) => f.dataUrl) : uploadedImageUrls);
       const activeLyrics = opts?.lyricsOverride ?? rawLyrics;
+      const activeSongTitle = opts?.songTitleOverride ?? songTitle;
       const activeMode = opts?.modeOverride ?? chunkMode;
       const activeSceneCount = opts?.sceneCountOverride ?? targetSceneCount;
       const fixedSec = Math.max(2, intervalMinutes * 60 + intervalSeconds);
@@ -181,9 +193,10 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
       try {
         const built = await buildFullSongVideoChunks({
           audioSource: activeAudio,
-          songTitle,
+          songTitle: activeSongTitle,
           rawLyrics: activeLyrics,
           uploadedImageUrls: activeImages,
+          orderedStoryboardFrames: activeFrames.length > 0 ? activeFrames : undefined,
           chunkMode: activeMode,
           fixedIntervalSec: fixedSec,
           targetSceneCount: activeSceneCount,
@@ -206,7 +219,7 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
         const shortfallNote =
           built.shortfallFilledCount > 0
             ? ` (${built.shortfallFilledCount} missing storyboard frames synthesized on-the-fly to commensurate all ${built.chunks.length} chunks!)`
-            : ` (All ${built.chunks.length} chunks paired with storyboard frames!)`;
+            : ` (All ${built.chunks.length} chunks paired in exact 01→${built.chunks.length} order!)`;
 
         setStatusBanner({
           message: `Synced ${built.chunks.length} audio chunks at ${built.analysis.feltGrooveBpm} BPM${shortfallNote}`,
@@ -232,6 +245,7 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
       chunkMode,
       intervalMinutes,
       intervalSeconds,
+      orderedStoryboardFrames,
       rawLyrics,
       selectedModelId,
       songTitle,
@@ -301,31 +315,105 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
     await executeChunkAndFramePipeline({ audioOverride: file });
   };
 
-  // Handle Multi-Image Storyboard Upload
-  const handleStoryboardImagesUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fileList = e.target.files;
-    if (!fileList || fileList.length === 0) return;
+  // Handle ChatGPT 2-ZIP (Folder A 01–10 + Folder B 11–20) or Multi-Image Storyboard Upload
+  const processStoryboardFiles = async (
+    fileArray: File[],
+    forcedBatch: 'A' | 'B' | 'AUTO' = 'AUTO'
+  ) => {
+    if (fileArray.length === 0) return;
     setMergedMasterClip(null);
 
-    const newUrls: string[] = [];
-    for (let i = 0; i < fileList.length; i++) {
-      const f = fileList[i];
-      if (f.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.name)) {
-        const dataUrl = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
-          reader.onerror = () => resolve(URL.createObjectURL(f));
-          reader.readAsDataURL(f);
-        });
-        if (dataUrl) newUrls.push(dataUrl);
-      }
-    }
+    setStatusBanner({
+      message: `Unravelling & ordering storyboard files (${fileArray.map((f) => f.name).join(', ')})...`,
+      percent: 30,
+      variant: 'info'
+    });
 
-    if (newUrls.length > 0) {
-      const combined = [...uploadedImageUrls, ...newUrls];
-      setUploadedImageUrls(combined);
-      await executeChunkAndFramePipeline({ imagesOverride: combined });
+    try {
+      const unraveled = await unravelStoryboardFilesAndZips({
+        files: fileArray,
+        existingFrames: orderedStoryboardFrames,
+        forcedBatch,
+        targetTotal: targetSceneCount,
+        onProgress: (msg) => {
+          setStatusBanner({ message: msg, percent: 50, variant: 'info' });
+        }
+      });
+
+      const nextFrames = unraveled.orderedFrames;
+      const nextUrls = nextFrames.map((f) => f.dataUrl);
+      setOrderedStoryboardFrames(nextFrames);
+      setUploadedImageUrls(nextUrls);
+
+      let nextSongTitle = songTitle;
+      if (unraveled.detectedSongTitle) {
+        nextSongTitle = unraveled.detectedSongTitle;
+        setSongTitle(unraveled.detectedSongTitle);
+      }
+
+      let nextLyrics = rawLyrics;
+      if (unraveled.detectedManifestLyrics) {
+        nextLyrics = unraveled.detectedManifestLyrics;
+        setRawLyrics(unraveled.detectedManifestLyrics);
+      }
+
+      await executeChunkAndFramePipeline({
+        imagesOverride: nextUrls,
+        framesOverride: nextFrames,
+        songTitleOverride: nextSongTitle,
+        lyricsOverride: nextLyrics
+      });
+
+      setStatusBanner({
+        message: `Unraveled & sorted ${nextFrames.length} storyboard frames in canonical 01→20 order (Set A 01–10: ${unraveled.folderACount}/10 • Set B 11–20: ${unraveled.folderBCount}/10)!`,
+        percent: 100,
+        variant: 'success'
+      });
+    } catch (err: unknown) {
+      setStatusBanner({
+        message:
+          err instanceof Error
+            ? `ZIP/Image Unravel note: ${err.message}`
+            : 'Could not read storyboard archive.',
+        percent: 0,
+        variant: 'warning'
+      });
     }
+  };
+
+  const handleStoryboardImagesUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    forcedBatch: 'A' | 'B' | 'AUTO' = 'AUTO'
+  ) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    const arr = Array.from(fileList);
+    e.target.value = '';
+    await processStoryboardFiles(arr, forcedBatch);
+  };
+
+  const handleSwapStoryboardSlots = async (idxA: number, idxB: number) => {
+    if (
+      idxA < 0 ||
+      idxB < 0 ||
+      idxA >= orderedStoryboardFrames.length ||
+      idxB >= orderedStoryboardFrames.length
+    ) {
+      return;
+    }
+    const copy = [...orderedStoryboardFrames];
+    const numA = copy[idxA].sceneNumber;
+    const numB = copy[idxB].sceneNumber;
+    copy[idxA] = { ...copy[idxA], sceneNumber: numB };
+    copy[idxB] = { ...copy[idxB], sceneNumber: numA };
+    const summary = buildOrderedStoryboardSetSummary(copy, targetSceneCount);
+    const nextUrls = summary.orderedFrames.map((f) => f.dataUrl);
+    setOrderedStoryboardFrames(summary.orderedFrames);
+    setUploadedImageUrls(nextUrls);
+    await executeChunkAndFramePipeline({
+      imagesOverride: nextUrls,
+      framesOverride: summary.orderedFrames
+    });
   };
 
   // Import existing frames from 20-Scene Storyboard Director if available
@@ -910,7 +998,16 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
       (c) => livePreviewTimeSec >= c.startTimeSec && livePreviewTimeSec < c.endTimeSec
     ) || chunks[0];
 
-  const uploadedCount = uploadedImageUrls.length;
+  const uploadedCount =
+    orderedStoryboardFrames.length > 0
+      ? orderedStoryboardFrames.length
+      : uploadedImageUrls.length;
+  const setACount = orderedStoryboardFrames.filter(
+    (f) => f.sceneNumber >= 1 && f.sceneNumber <= 10
+  ).length;
+  const setBCount = orderedStoryboardFrames.filter(
+    (f) => f.sceneNumber >= 11 && f.sceneNumber <= 20
+  ).length;
   const totalChunksCount = chunks.length;
 
   return (
@@ -1224,7 +1321,7 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
             <div className="flex items-center justify-between flex-wrap gap-2">
               <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                 <ImageIcon className="w-4 h-4 text-amber-400" />
-                <span>2. Storyboard Images &amp; On-The-Fly Commensurate Frames</span>
+                <span>2. ChatGPT 2-ZIP (01–10 &amp; 11–20) &amp; Storyboard Unraveller</span>
               </h2>
               <button
                 type="button"
@@ -1235,25 +1332,89 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
               </button>
             </div>
 
-            {/* Multi-Image Dropzone */}
-            <label className="block p-4 rounded-2xl border-2 border-dashed border-amber-500/35 hover:border-amber-400 bg-amber-500/5 hover:bg-amber-500/10 text-center transition cursor-pointer">
+            {/* Unified Multi-ZIP + Multi-Image Dropzone */}
+            <label
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                  void processStoryboardFiles(Array.from(e.dataTransfer.files), 'AUTO');
+                }
+              }}
+              className="block p-4 rounded-2xl border-2 border-dashed border-amber-500/40 hover:border-amber-400 bg-amber-500/5 hover:bg-amber-500/10 text-center transition cursor-pointer"
+            >
               <input
                 type="file"
-                accept="image/*"
+                accept=".zip,application/zip,application/x-zip-compressed,image/*,.txt"
                 multiple
-                onChange={handleStoryboardImagesUpload}
+                onChange={(e) => void handleStoryboardImagesUpload(e, 'AUTO')}
                 className="hidden"
               />
               <div className="flex flex-col items-center gap-1.5">
-                <Plus className="w-6 h-6 text-amber-400" />
+                <FolderArchive className="w-6 h-6 text-amber-400" />
                 <span className="text-xs font-bold text-white">
-                  Upload Storyboard Images (Select 1, 10, 20, or more at once)
+                  Drop or Select ChatGPT ZIPs (`Folder_A_01_10.zip` + `Folder_B_11_20.zip`) or Images 01–20
                 </span>
                 <span className="text-[11px] text-zinc-400">
-                  If uploaded images fall short of audio chunks, LipSyncer creates commensurate scene frames on the fly!
+                  Select both ZIPs at once (in any order!) or upload one after the other — automatically unzips &amp; sorts #01 → #20!
                 </span>
               </div>
             </label>
+
+            {/* Dedicated Folder A (01–10) & Folder B (11–20) Quick Slot Uploaders */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <label className="p-2.5 rounded-xl bg-cyan-950/30 hover:bg-cyan-950/50 border border-cyan-500/30 flex items-center justify-between gap-2 cursor-pointer transition">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FolderArchive className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <div className="truncate">
+                    <span className="text-xs font-bold text-cyan-200 block">
+                      Set A: Scenes 01–10
+                    </span>
+                    <span className="text-[10px] text-zinc-400 block truncate">
+                      Upload `Folder_A_Images_01_10.zip`
+                    </span>
+                  </div>
+                </div>
+                <span className="px-2 py-0.5 rounded-md bg-cyan-500/20 border border-cyan-500/30 text-[10px] font-mono font-bold text-cyan-300 shrink-0">
+                  {setACount}/10
+                </span>
+                <input
+                  type="file"
+                  accept=".zip,application/zip,application/x-zip-compressed,image/*"
+                  multiple
+                  onChange={(e) => void handleStoryboardImagesUpload(e, 'A')}
+                  className="hidden"
+                />
+              </label>
+
+              <label className="p-2.5 rounded-xl bg-fuchsia-950/30 hover:bg-fuchsia-950/50 border border-fuchsia-500/30 flex items-center justify-between gap-2 cursor-pointer transition">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FolderArchive className="w-4 h-4 text-fuchsia-400 shrink-0" />
+                  <div className="truncate">
+                    <span className="text-xs font-bold text-fuchsia-200 block">
+                      Set B: Scenes 11–20
+                    </span>
+                    <span className="text-[10px] text-zinc-400 block truncate">
+                      Upload `Folder_B_Images_11_20.zip`
+                    </span>
+                  </div>
+                </div>
+                <span className="px-2 py-0.5 rounded-md bg-fuchsia-500/20 border border-fuchsia-500/30 text-[10px] font-mono font-bold text-fuchsia-300 shrink-0">
+                  {setBCount}/10
+                </span>
+                <input
+                  type="file"
+                  accept=".zip,application/zip,application/x-zip-compressed,image/*"
+                  multiple
+                  onChange={(e) => void handleStoryboardImagesUpload(e, 'B')}
+                  className="hidden"
+                />
+              </label>
+            </div>
 
             {/* Commensurate Shortfall Telemetry Banner */}
             <div
@@ -1267,56 +1428,119 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
                 <span className="flex items-center gap-1.5">
                   <Sparkles className="w-4 h-4 text-amber-400" />
                   <span>
-                    Uploaded Images: {uploadedCount} | Audio Chunks: {totalChunksCount}
+                    Uploaded Frames: {uploadedCount} | Audio Chunks: {totalChunksCount}
                   </span>
                 </span>
                 <span className="px-2 py-0.5 rounded-md bg-black/40 text-[10px] font-mono">
                   {shortfallFilledCount > 0
                     ? `+${shortfallFilledCount} Commensurate Frames Auto-Created`
-                    : '100% Matched'}
+                    : 'Sorted #01 → #20 Lock'}
                 </span>
               </div>
               <p className="text-[11px] text-zinc-300 leading-relaxed">
                 {shortfallFilledCount > 0
                   ? `Your upload had ${uploadedCount} images for ${totalChunksCount} audio chunks (${shortfallFilledCount} short). LipSyncer automatically synthesized ${shortfallFilledCount} commensurate scene frames on the fly so every audio chunk has a high-definition visual scene!`
-                  : `All ${totalChunksCount} audio chunks are paired with storyboard frames.`}
+                  : `All ${totalChunksCount} audio chunks are paired in exact #01 → #${totalChunksCount} chronological scene order.`}
               </p>
             </div>
 
-            {/* Uploaded Thumbnails Strip */}
-            {uploadedImageUrls.length > 0 && (
+            {/* Canonical #01 -> #20 Unraveled Thumbnails Strip */}
+            {(orderedStoryboardFrames.length > 0 || uploadedImageUrls.length > 0) && (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-[11px] text-zinc-400">
-                  <span>Uploaded Storyboard Queue ({uploadedImageUrls.length} images):</span>
+                  <span>
+                    Ordered Storyboard Sequence (
+                    {orderedStoryboardFrames.length > 0
+                      ? `${orderedStoryboardFrames.length} frames sorted #01 → #${orderedStoryboardFrames[orderedStoryboardFrames.length - 1]?.sceneCode}`
+                      : `${uploadedImageUrls.length} demo frames`}
+                    ):
+                  </span>
                   <button
                     type="button"
                     onClick={() => {
+                      setOrderedStoryboardFrames([]);
                       setUploadedImageUrls([]);
-                      void executeChunkAndFramePipeline({ imagesOverride: [] });
+                      void executeChunkAndFramePipeline({
+                        imagesOverride: [],
+                        framesOverride: []
+                      });
                     }}
                     className="text-rose-400 hover:text-rose-300 flex items-center gap-1 cursor-pointer"
                   >
                     <Trash2 className="w-3 h-3" />
-                    <span>Clear Uploaded</span>
+                    <span>Clear All</span>
                   </button>
                 </div>
-                <div className="flex items-center gap-2 overflow-x-auto pb-1.5">
-                  {uploadedImageUrls.map((url, idx) => (
-                    <div
-                      key={idx}
-                      className="relative w-16 h-11 rounded-lg overflow-hidden border border-white/15 shrink-0 group bg-black"
-                    >
-                      <img
-                        src={url}
-                        alt={`Uploaded ${idx + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                      <span className="absolute bottom-0.5 left-0.5 px-1 rounded bg-black/80 text-[9px] font-mono text-white">
-                        #{idx + 1}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+
+                {orderedStoryboardFrames.length > 0 ? (
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1.5">
+                    {orderedStoryboardFrames.map((frame, idx) => (
+                      <div
+                        key={`${frame.sceneNumber}-${frame.originalFileName}`}
+                        title={`#${frame.sceneCode} (Set ${frame.folderBatch}): ${frame.sceneTitle}\nFile: ${frame.originalFileName}`}
+                        className="relative w-24 h-16 rounded-xl overflow-hidden border border-white/15 shrink-0 group bg-black"
+                      >
+                        <img
+                          src={frame.dataUrl}
+                          alt={frame.sceneTitle}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute top-0.5 left-0.5 right-0.5 flex items-center justify-between px-1">
+                          <span
+                            className={`px-1 rounded text-[9px] font-mono font-bold ${
+                              frame.folderBatch === 'A'
+                                ? 'bg-cyan-500/90 text-black'
+                                : 'bg-fuchsia-500/90 text-white'
+                            }`}
+                          >
+                            #{frame.sceneCode} {frame.folderBatch}
+                          </span>
+                          <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 bg-black/80 rounded px-0.5 transition">
+                            <button
+                              type="button"
+                              disabled={idx === 0}
+                              onClick={() => void handleSwapStoryboardSlots(idx, idx - 1)}
+                              className="text-[9px] text-white hover:text-amber-300 px-0.5 disabled:opacity-30 cursor-pointer"
+                              title="Swap left"
+                            >
+                              ◀
+                            </button>
+                            <button
+                              type="button"
+                              disabled={idx === orderedStoryboardFrames.length - 1}
+                              onClick={() => void handleSwapStoryboardSlots(idx, idx + 1)}
+                              className="text-[9px] text-white hover:text-amber-300 px-0.5 disabled:opacity-30 cursor-pointer"
+                              title="Swap right"
+                            >
+                              ▶
+                            </button>
+                          </div>
+                        </div>
+                        <div className="absolute bottom-0 inset-x-0 bg-black/75 px-1 py-0.5 text-[9px] text-zinc-200 truncate">
+                          {frame.sceneTitle}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1.5">
+                    {uploadedImageUrls.map((url, idx) => (
+                      <div
+                        key={idx}
+                        className="relative w-16 h-11 rounded-lg overflow-hidden border border-white/15 shrink-0 group bg-black"
+                      >
+                        <img
+                          src={url}
+                          alt={`Uploaded ${idx + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                        <span className="absolute bottom-0.5 left-0.5 px-1 rounded bg-black/80 text-[9px] font-mono text-white">
+                          #{idx + 1 < 10 ? `0${idx + 1}` : idx + 1}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
