@@ -27,7 +27,8 @@ import {
   SlidersHorizontal,
   Mic,
   RotateCcw,
-  Database
+  Database,
+  ChevronDown
 } from 'lucide-react';
 import {
   AspectRatioOption,
@@ -41,6 +42,8 @@ import {
   UnraveledStoryboardFrame
 } from '../types';
 import { LIPSYNC_MODELS } from '../data/modelCatalog';
+import { ModelBrandIcon } from './ModelBrandIcon';
+import { OpenArtModelSelectorModal } from './OpenArtModelSelectorModal';
 import {
   analyzeVocalFormantsAndBpm,
   generateDemoPortraitDataUrl,
@@ -125,7 +128,9 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
   >('ALL');
   const [copiedSceneKey, setCopiedSceneKey] = useState<string>('');
   const [aspectRatio, setAspectRatio] = useState<AspectRatioOption>('16:9');
-  const [selectedModelId, setSelectedModelId] = useState<string>('lipsyncer-dsp-60fps');
+  const [selectedModelId, setSelectedModelId] = useState<string>('openart-lip-sync');
+  const [isModelModalOpen, setIsModelModalOpen] = useState<boolean>(false);
+  const [modelModalChunkTarget, setModelModalChunkTarget] = useState<number | null>(null);
 
   // Lyrics & Vocal DSP Sync State
   const [rawLyrics, setRawLyrics] = useState<string>(DEFAULT_FULL_SONG_LYRICS);
@@ -148,6 +153,9 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
 
   // Final Merged Master Video Output
   const [mergedMasterClip, setMergedMasterClip] = useState<GeneratedLipSyncClip | null>(null);
+
+  const activeGlobalModel =
+    LIPSYNC_MODELS.find((m) => m.id === selectedModelId) ?? LIPSYNC_MODELS[0];
 
   // Audio Slice Mini-Player State
   const [playingChunkIdx, setPlayingChunkIdx] = useState<number | null>(null);
@@ -1089,7 +1097,7 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
         chunk: target,
         masterAudioSource: audioFile,
         aspectRatio,
-        modelIdOverride: selectedModelId,
+        modelIdOverride: target.selectedModelId || selectedModelId,
         onChunkProgress: (pct) => {
           setChunks((prev) =>
             prev.map((c) =>
@@ -2530,17 +2538,61 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
       {/* STEP 5: CHUNK-BY-CHUNK STORYBOARD & COMMENSURATE FRAME TIMELINE GRID   */}
       {/* ===================================================================== */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center justify-between flex-wrap gap-4 p-4 rounded-2xl bg-[#141520] border border-white/12 shadow-xl">
           <div>
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <Layers className="w-4 h-4 text-sky-400" />
+            <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+              <Layers className="w-5 h-5 text-sky-400" />
               <span>
                 Timeline Scenes &amp; Production Rack ({chunks.length} Scenes)
               </span>
             </h2>
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-zinc-400 mt-0.5">
               Toggle any scene between Lip-Sync and Narrative Motion to update the render pipeline and clipboard prompt.
             </p>
+          </div>
+
+          {/* Prominent High-Visibility Active AI Model Selector Pill */}
+          <div className="flex items-center gap-3 bg-black/60 p-2 pl-3.5 rounded-2xl border border-white/15 shadow-inner flex-wrap sm:flex-nowrap">
+            <div className="flex items-center gap-2.5">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-400">
+                Active Model:
+              </span>
+              <div className="flex items-center gap-2">
+                <ModelBrandIcon
+                  provider={activeGlobalModel.provider}
+                  modelId={activeGlobalModel.id}
+                  size="sm"
+                />
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs sm:text-sm font-bold text-white tracking-tight">
+                      {activeGlobalModel.name}
+                    </span>
+                    {activeGlobalModel.badges?.[0] && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        {activeGlobalModel.badges[0].label}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-zinc-400 block -mt-0.5">
+                    {activeGlobalModel.provider}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setModelModalChunkTarget(null);
+                setIsModelModalOpen(true);
+              }}
+              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-sky-600 hover:from-violet-500 hover:to-sky-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-violet-600/30 transition cursor-pointer shrink-0"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-cyan-200" />
+              <span>Select Model ({LIPSYNC_MODELS.length})</span>
+              <ChevronDown className="w-3.5 h-3.5 text-white/70" />
+            </button>
           </div>
         </div>
 
@@ -2564,6 +2616,10 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
               const isUserOverrideTakeover =
                 chunk.geniusRecommendedEdition &&
                 chunk.geniusRecommendedEdition !== chunk.activePromptEdition;
+              const chunkModelSpec =
+                LIPSYNC_MODELS.find(
+                  (m) => m.id === (chunk.selectedModelId || selectedModelId)
+                ) ?? activeGlobalModel;
 
               return (
                 <div
@@ -2853,8 +2909,40 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Bottom Controls: Camera Motion + Frame Actions + Single Chunk Render */}
+                  {/* Bottom Controls: Per-Scene Model + Camera Motion + Frame Actions + Single Chunk Render */}
                   <div className="pt-2 border-t border-zinc-800 space-y-2">
+                    {/* Per-Scene Model Pill & Quick Switcher */}
+                    <div className="flex items-center justify-between gap-2 p-1.5 rounded-lg bg-black/40 border border-white/5">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <ModelBrandIcon
+                          provider={chunkModelSpec.provider}
+                          modelId={chunkModelSpec.id}
+                          size="sm"
+                        />
+                        <div className="min-w-0">
+                          <span className="text-[11px] font-bold text-white block truncate">
+                            {chunkModelSpec.name}
+                          </span>
+                          <span className="text-[9px] text-zinc-400 block -mt-0.5">
+                            {chunkModelSpec.provider}
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setModelModalChunkTarget(chunk.chunkIndex);
+                          setIsModelModalOpen(true);
+                        }}
+                        className="px-2 py-1 rounded-md bg-white/5 hover:bg-white/10 text-[10px] font-semibold text-zinc-300 hover:text-white border border-white/8 transition cursor-pointer flex items-center gap-1 shrink-0"
+                        title={`Change AI model for Scene #${chunk.chunkCode}`}
+                      >
+                        <span>Change</span>
+                        <ChevronDown className="w-3 h-3 text-zinc-400" />
+                      </button>
+                    </div>
+
                     <div className="flex items-center justify-between gap-2">
                       <select
                         value={chunk.cameraMovement}
@@ -2938,7 +3026,7 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
                           <Loader2 className="w-3 h-3 animate-spin" />
                           <span>
                             {isLipSyncActive
-                              ? `Rendering Lip-Sync (${chunk.progressPercent || 15}%)...`
+                              ? `Rendering Lip-Sync with ${chunkModelSpec.name} (${chunk.progressPercent || 15}%)...`
                               : `Rendering Motion ${chunk.chunkCode}A (${chunk.progressPercent || 15}%)...`}
                           </span>
                         </>
@@ -2948,10 +3036,10 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
                           <span>
                             {chunk.generatedVideoUrl
                               ? isLipSyncActive
-                                ? 'Re-Render Lip-Sync Video'
+                                ? `Re-Render with ${chunkModelSpec.name}`
                                 : `Re-Render Motion Video (${chunk.chunkCode}A)`
                               : isLipSyncActive
-                                ? 'Render Lip-Sync Video'
+                                ? `Render with ${chunkModelSpec.name}`
                                 : `Render Motion Video (${chunk.chunkCode}A)`}
                           </span>
                         </>
@@ -2963,6 +3051,38 @@ export const FullSongVideoModeView: React.FC<FullSongVideoModeViewProps> = ({
             })}
         </div>
       </div>
+
+      {/* Model Selector Modal for Full Song Video Studio */}
+      <OpenArtModelSelectorModal
+        isOpen={isModelModalOpen}
+        onClose={() => {
+          setIsModelModalOpen(false);
+          setModelModalChunkTarget(null);
+        }}
+        selectedModelId={
+          modelModalChunkTarget !== null
+            ? chunks.find((c) => c.chunkIndex === modelModalChunkTarget)?.selectedModelId || selectedModelId
+            : selectedModelId
+        }
+        onSelectModel={(modelId) => {
+          if (modelModalChunkTarget !== null) {
+            setChunks((prev) =>
+              prev.map((c) =>
+                c.chunkIndex === modelModalChunkTarget
+                  ? { ...c, selectedModelId: modelId }
+                  : c
+              )
+            );
+          } else {
+            setSelectedModelId(modelId);
+            setChunks((prev) =>
+              prev.map((c) => ({ ...c, selectedModelId: modelId }))
+            );
+          }
+          setIsModelModalOpen(false);
+          setModelModalChunkTarget(null);
+        }}
+      />
     </div>
   );
 };

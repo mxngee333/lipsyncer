@@ -665,7 +665,7 @@ export const App: React.FC = () => {
               }`}
             >
               <Compass className="w-3.5 h-3.5 text-zinc-400" />
-              11 Models
+              {LIPSYNC_MODELS.length} Models
             </button>
 
             <button

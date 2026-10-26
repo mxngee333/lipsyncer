@@ -637,7 +637,7 @@ export const StoryboardDirectorView: React.FC = () => {
       }
 
       const sliceWav = await extractAudioSliceWav(masterAudio, scene.timeStartSec, scene.timeEndSec);
-      const selectedModel = scene.selectedModelId || 'ltx-2-5-audio';
+      const selectedModel = scene.selectedModelId || 'openart-lip-sync';
       const activeEdition = scene.activePromptEdition || 'PRIMARY_LIPSYNC';
       const activePrompt =
         activeEdition === 'ACTION_ONLY_ANIMATE'
@@ -1522,7 +1522,23 @@ export const StoryboardDirectorView: React.FC = () => {
 
                   {/* Actions & Model Chooser */}
                   <div className="pt-2 border-t border-zinc-800 flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select
+                        value={scene.selectedModelId || 'openart-lip-sync'}
+                        onChange={(e) => {
+                          scene.selectedModelId = e.target.value;
+                          if (project) saveStoryboardProject(project);
+                          setProject(project ? { ...project } : null);
+                        }}
+                        className="bg-zinc-900 border border-zinc-800 rounded-md px-2 py-1 text-[11px] text-zinc-300 focus:outline-none cursor-pointer max-w-[150px] truncate"
+                        title="AI Model Engine for this scene"
+                      >
+                        {LIPSYNC_MODELS.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
                       <button
                         type="button"
                         disabled={scene.isGeneratingImage}
@@ -1547,7 +1563,11 @@ export const StoryboardDirectorView: React.FC = () => {
                             ? 'Rendering...'
                             : activeEdition === 'ACTION_ONLY_ANIMATE'
                             ? `Render Motion (${scene.sceneCode}A)`
-                            : 'Render Lip-Sync'}
+                            : `Render with ${
+                                LIPSYNC_MODELS.find(
+                                  (m) => m.id === (scene.selectedModelId || 'openart-lip-sync')
+                                )?.name || 'Lip-Sync'
+                              }`}
                         </span>
                       </button>
                     </div>
